@@ -53,7 +53,7 @@ function db_login {
             $output = tsh db ls --format=json | ConvertFrom-Json
 
             # Filter for RDS only
-            $dbs = $output | Where-Object { $_.metadata.labels.db_type -eq $db_type }
+            $dbs = $output | Where-Object { $_.metadata.labels.db_type -ne "rds" }
 
             # If no RDS databases are listed, prompt for elevated login
             if (-not $dbs) {
@@ -89,7 +89,11 @@ function db_login {
     # Fetch and parse JSON output from tsh
     $jsonOutput = tsh db ls --format=json | ConvertFrom-Json
 
-    $filteredDbs = $jsonOutput | Where-Object { $_.metadata.labels.db_type -eq $db_type }
+    if ($db_type -eq "rds") {
+        $filteredDbs = $jsonOutput | Where-Object { $_.metadata.labels.db_type -eq $db_type  }
+    } else {
+        $filteredDbs = $jsonOutput | Where-Object { $_.metadata.labels.db_type -ne "rds" }
+    }
 
     # Display full names with numbering
     Clear-Host
