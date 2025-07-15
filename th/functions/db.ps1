@@ -92,7 +92,7 @@ function db_login {
     $filteredDbs = $jsonOutput | Where-Object { $_.metadata.labels.db_type -eq $db_type }
 
     # Display full names with numbering
-    #Clear-Host
+    Clear-Host
     Write-Host "`nAvailable databases:`n" -ForegroundColor White
     $i = 1
     foreach ($db in $filteredDbs) {
@@ -241,7 +241,7 @@ function rds_connect {
             Write-Host "postgres" -ForegroundColor White -NoNewLine
             Write-Host "): " -NoNewLine
             $database = Read-Host 
-            $db_user="teleport_rds_read_user"
+            $db_user=""
             while ($true) {
                 Write-Host "`nConnecting as Admin? (y/n): " -ForegroundColor White -NoNewLine
                 $admin = Read-Host
@@ -250,6 +250,7 @@ function rds_connect {
                     break
                 }
                 elseif ($admin -match '^[Nn]$') {
+                    $db_user="teleport_rds_read_user"
                     break
                 }
                 else {
@@ -281,7 +282,7 @@ function rds_connect {
             Write-Host "postgres" -ForegroundColor White -NoNewLine
             Write-Host "): " -NoNewLine
             $database = Read-Host 
-            $db_user="teleport_rds_read_user"
+            $db_user=""
             while ($true) {
                 Write-Host "`nConnecting as Admin? (y/n): " -ForegroundColor White -NoNewLine
                 $admin = Read-Host
@@ -290,6 +291,7 @@ function rds_connect {
                     break
                 }
                 elseif ($admin -match '^[Nn]$') {
+                    $db_user="teleport_rds_read_user"
                     break
                 }
                 else {
@@ -299,7 +301,7 @@ function rds_connect {
             
             if ([string]::IsNullOrWhiteSpace($database)) {
                 $database = "postgres"
-                open_dbeaver "postgres" $rds
+                open_dbeaver "postgres" $rds $db_user
                 return
             }
             open_dbeaver $database $rds $db_user
