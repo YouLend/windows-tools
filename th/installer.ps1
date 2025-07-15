@@ -15,7 +15,7 @@ $profileContents = $profileContents -as [string]
 # Add import line if not already present
 if ($profileContents -notmatch [regex]::Escape($importLine)) {
     Add-Content -Path $profileFile -Value "`n$importLine"
-    Write-Host "`nAdded module import to $profileFile : $importLine"
+    Write-Host "`nAdded module import to $profileFile"
 } else {
     Write-Host "`nModule import already exists in profile."
 }
