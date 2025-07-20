@@ -1,4 +1,5 @@
 function th_login {
+    Write-Host "`nChecking login status..."
     try {
         tsh apps logout *> $null
     } catch {

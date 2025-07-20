@@ -3,6 +3,7 @@
 # ============================================================
 
 function db_login {
+    th_login
     Write-Host "`nWhich database would you like to connect to: "
     Write-Host "`n1. " -NoNewLine
     Write-Host "RDS" -ForegroundColor White
@@ -17,37 +18,12 @@ function db_login {
             Write-Host "`nSelected: " -NoNewLine
             Write-Host "RDS" -ForegroundColor White
             $db_type = "rds"
-
-            # Perform teleport login if needed
-            th_login
-
-            # Get the list of databases
-            $output = tsh db ls --format=json | ConvertFrom-Json
-
-            # Filter for RDS only
-            $dbs = $output | Where-Object { $_.metadata.labels.db_type -eq $db_type }
-
-            # If no RDS databases are listed, prompt for elevated login
-            if (-not $dbs) {
-                Clear-Host
-                Write-Host "`n====================== Privilege Request ==========================" -ForegroundColor White
-                Write-Host "`nYou don't have access to any databases..." -ForegroundColor White
-                Write-Host "`nWould you like to raise a request? (y/n): " -ForegroundColor White -NoNewLine
-                $elevated = Read-Host
-                if ($elevated -match '^[Yy]$') {
-                    db_elevated_login
-                    return
-                }
-                return
-            }
             break
         }
         elseif ($choice -eq "2") {
             Write-Host "`nSelected: " -NoNewLine
             Write-Host "MongoDB" -ForegroundColor White
             $db_type = "mongo"
-
-            th_login
 
             # Get the list of databases
             $output = tsh db ls --format=json | ConvertFrom-Json
@@ -134,10 +110,7 @@ function db_login {
     mongo_connect $db
 }
 
-function db_elevated_login {
-    param (
-        [string]$cluster = $null
-    )
+function db_elevated_login() {
 
     while ($true) {
         if ($elevated -match '^[Yy]$') {
@@ -171,7 +144,7 @@ function db_elevated_login {
     }
 }
 
-function open_dbeaver($database, $rds, $db_user) {
+function open_dbeaver($rds, $db_user, $database) {
     Write-Host "`nConnecting to " -NoNewLine
     Write-Host "$database " -NoNewLine -ForegroundColor Green
     Write-Host "in " -NoNewLine
@@ -219,10 +192,8 @@ function open_dbeaver($database, $rds, $db_user) {
     }
 }
 
-function rds_connect {
-    param (
-        [string]$rds
-    )
+function rds_connect($rds) {
+    $db_user = "teleport_rds_read_user"
 
     Write-Host "`n$rds " -NoNewLine -ForegroundColor Green
     Write-Host "selected." 
@@ -238,77 +209,141 @@ function rds_connect {
         return
     }
 
+    
+
+    function check_admin {   
+        $tshStatus = tsh status
+        if ($tshStatus -match '\bsudo_teleport_rds_user\b') {
+            Write-Host "`nConnecting as admin? (y/n): " -NoNewline
+            $admin = Read-Host
+
+            if ($admin -match '^[Yy]$') {
+                $db_user = "sudo_teleport_rds_user"
+            }
+        }
+        return $db_user
+    }
+
+    function connect_db($rds, $db_user, $database) {
+
+        Write-Host "`nConnecting to " -NoNewline
+        Write-Host "$database" -ForegroundColor Green -NoNewline
+        Write-Host " in " -NoNewline
+        Write-Host "$rds" -ForegroundColor Green -NoNewline
+        Write-Host " as " -NoNewline
+        Write-Host "$db_user`n" -ForegroundColor Green
+
+        3..1 | ForEach-Object {
+            Write-Host ". " -ForegroundColor Green -NoNewline
+            Start-Sleep -Seconds 1
+        }
+
+        Write-Host "`n"
+        Clear-Host
+
+        tsh db connect $rds --db-user=$db_user --db-name=$database
+    }
+
+    function list_postgres_dbs($rds) {
+
+        $dbUser = "teleport_rds_read_user"
+
+        Write-Host "`nFetching list of databases from " -ForegroundColor White -NoNewLine
+        Write-Host "$rds..." -ForegroundColor Green
+
+        function Get-FreePort {
+            $listener = [System.Net.Sockets.TcpListener]::New([System.Net.IPAddress]::Loopback, 0)
+            $listener.Start()
+            $port = $listener.LocalEndpoint.Port
+            $listener.Stop()
+            return $port
+        }
+
+        $port = Get-FreePort
+
+        # Start proxy and keep track of process
+        $proxyProc = Start-Process tsh -ArgumentList @(
+            "proxy", "db", $rds,
+            "--tunnel",
+            "--port=$port",
+            "--db-user=$dbUser",
+            "--db-name=postgres"
+        ) -PassThru -WindowStyle Hidden
+
+        # Wait for proxy port to open (max 10s)
+        $portOpen = $false
+        for ($i = 0; $i -lt 10; $i++) {
+            Start-Sleep -Seconds 1
+            try {
+                $tcp = New-Object System.Net.Sockets.TcpClient("localhost", $port)
+                if ($tcp.Connected) {
+                    $tcp.Close()
+                    $portOpen = $true
+                    break
+                }
+            } catch {}
+        }
+
+        if (-not $portOpen) {
+            Write-Host "`n❌ Failed to establish tunnel to database." -ForegroundColor Red
+            try { $proxyProc.Kill() } catch {}
+            return
+        }
+
+        $query = "SELECT datname FROM pg_database WHERE datistemplate = false;"
+        $dbList = & psql "postgres://$dbUser@localhost:$port/postgres" -t -A -c $query 2>$null
+
+        if ([string]::IsNullOrWhiteSpace($dbList)) {
+            Write-Host "❌ No databases found or connection failed." -ForegroundColor Red
+            try { $proxyProc.Kill() } catch {}
+            return
+        }
+
+        $databases = $dbList -split "`n" | Where-Object { $_.Trim() -ne "" }
+
+        Write-Host "`nAvailable databases:`n" -ForegroundColor White
+        for ($i = 0; $i -lt $databases.Length; $i++) {
+            $index = $i + 1
+            Write-Host "$index. $($databases[$i])" 
+        }
+
+        Write-Host "`nSelect database (number): " -ForegroundColor White -NoNewline
+        $choice = Read-Host
+
+        if (-not $choice -or -not ($choice -as [int]) -or $choice -lt 1 -or $choice -gt $databases.Length) {
+            Write-Host "`nInvalid selection. Exiting." -ForegroundColor Red
+            try { $proxyProc.Kill() } catch {}
+            return
+        }
+
+        $database = $databases[$choice - 1]
+
+        # Cleanup
+        try { $proxyProc.Kill() } catch {}
+
+        return $database
+    }
+
     switch ($option) {
         1 {
-            Write-Host "`nWhich internal database would you like to connect to?" -ForegroundColor White
-            Write-Host "`nEnter db name (leave blank to connect to " -NoNewLine -ForegroundColor White
-            Write-Host "postgres" -ForegroundColor White -NoNewLine
-            Write-Host "): " -NoNewLine
-            $database = Read-Host 
-            $db_user=""
-            while ($true) {
-                Write-Host "`nConnecting as Admin? (y/n): " -ForegroundColor White -NoNewLine
-                $admin = Read-Host
-                if ($admin -match '^[Yy]$') {
-                    $db_user = "sudo_teleport_rds_user"
-                    break
-                }
-                elseif ($admin -match '^[Nn]$') {
-                    $db_user="teleport_rds_read_user"
-                    break
-                }
-                else {
-                    Write-Host "`nInvalid selection. Please enter Y or N: " -ForegroundColor Red                
-                }
-            }
-            if ([string]::IsNullOrWhiteSpace($database)) {
-                $database = "postgres"
-            }
+            $database = list_postgres_dbs $rds
 
-            Write-Host "`n`nConnecting to " -NoNewLine
-            Write-Host "$database " -NoNewLine -ForegroundColor Green
-            Write-Host "in " -NoNewLine
-            Write-Host "$rds " -NoNewLine -ForegroundColor Green
-            Write-Host "as " -NoNewLine 
-            Write-Host "$db_user" -ForegroundColor Green
-            for ($i = 3; $i -ge 1; $i--) {
-                Write-Host ". " -NoNewline -ForegroundColor Green
-                Start-Sleep -Seconds 1
-            }
-            Clear-Host
+            $db_user = check_admin
 
-            tsh db connect $rds --db-user=$db_user --db-name=$database
+            connect_db $rds $db_user $database
+            return 
         }
         2 {
-            Write-Host "`nConnecting via DBeaver..."
-            Write-Host "`nWhich internal database would you like to connect to?" -ForegroundColor White
-            Write-Host "`nEnter db name (leave blank to connect to " -NoNewLine
-            Write-Host "postgres" -ForegroundColor White -NoNewLine
-            Write-Host "): " -NoNewLine
-            $database = Read-Host 
-            $db_user=""
-            while ($true) {
-                Write-Host "`nConnecting as Admin? (y/n): " -ForegroundColor White -NoNewLine
-                $admin = Read-Host
-                if ($admin -match '^[Yy]$') {
-                    $db_user = "sudo_teleport_rds_user"
-                    break
-                }
-                elseif ($admin -match '^[Nn]$') {
-                    $db_user="teleport_rds_read_user"
-                    break
-                }
-                else {
-                    Write-Host "`nInvalid selection. Please enter Y or N: " -ForegroundColor Red
-                }
-            }
+            $database = list_postgres_dbs $rds
+
+            $db_user = check_admin
             
             if ([string]::IsNullOrWhiteSpace($database)) {
                 $database = "postgres"
                 open_dbeaver "postgres" $rds $db_user
                 return
             }
-            open_dbeaver $database $rds $db_user
+            open_dbeaver $rds $db_user $database 
             return
         }
         default {
@@ -317,10 +352,7 @@ function rds_connect {
     }
 }
 
-function mongo_connect {
-    param (
-        [string]$db
-    )
+function mongo_connect($db) {
 
     $db_user = switch ($db) {
         "mongodb-YLUSProd-Cluster-1" { "teleport-usprod" }

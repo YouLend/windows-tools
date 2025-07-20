@@ -12,6 +12,7 @@ function th {
 	} else {
 		$SubArgs = @()
 	}
+	Clear-Host
     switch ($Command) {
 		{ $_ -in @("kube", "k") } {
 			if ($SubArgs[0] -eq "-h") {
