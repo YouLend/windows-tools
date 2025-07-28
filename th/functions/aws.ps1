@@ -22,7 +22,9 @@ function aws_login {
     $jsonOutput = tsh apps ls --format=json | ConvertFrom-Json
 
     # Display full names with numbering
-    Write-Host "`nAvailable apps:`n" -ForegroundColor White
+    Clear-Host
+    Write-Host 
+    create_header "Available Accounts"
     $i = 1
     foreach ($app in $jsonOutput) {
         Write-Host ("{0,3}. {1}" -f $i, $app.metadata.name) -ForegroundColor White
@@ -87,11 +89,14 @@ function aws_login {
     if (-not $roleSection) {
         $defaultRole = ($loginOutput | Select-String -Pattern 'arn:aws:iam::[^ ]*').Matches.Value -replace '^.*role/', ''
         Clear-Host
-        Write-Host "`n======================= Privilege Request =========================" -ForegroundColor White
-        Write-Host "`nNo privileged roles found. Your only available role is: " -ForegroundColor White -NoNewLine
+        Clear-Host
+        create_header "Privilege Request"
+        Write-Host "`nNo privileged roles found. Your only available role is: " -NoNewLine
         Write-Host $defaultRole -ForegroundColor Green
         while ($true) {
-            $request = Read-Host "`nWould you like to raise a privilege request? (y/n)"
+            Write-Host "`nWould you like to raise a privilege request?"
+            create_note "Entering (n) will log you in as prod"
+            $request = Read-Host "(y/n)"
             $request = $request.Trim()
 
             if ($request -match '^[Yy]$') {
@@ -123,9 +128,9 @@ function aws_login {
         tsh apps login $app
         return
     }
-
     Clear-Host
-    Write-Host "`nAvailable roles:`n" -ForegroundColor White
+    Write-Host
+    create_header "Available Roles"
     for ($i = 0; $i -lt $rolesList.Count; $i++) {
         $roleNameOnly = ($rolesList[$i] -split '\s+')[0]
         Write-Host ("{0,2}. {1}" -f ($i + 1), $roleNameOnly) -ForegroundColor White
@@ -306,6 +311,9 @@ function raise_request {
 # ============================================================
 function terraform_login {
     th_login
+    Clear-Host
+    Write-Host ""
+    create_header "Terragrunt"
     tsh apps logout *>$null
     Write-Host "`nLogging into " -ForegroundColor White -NoNewLine
     Write-Host "yl-admin " -ForegroundColor Green -NoNewLine

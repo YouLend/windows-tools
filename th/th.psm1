@@ -1,6 +1,6 @@
 # Load all function files
 $moduleRoot = $PSScriptRoot
-
+$version = "1.4.1"
 Get-ChildItem -Path "$moduleRoot/functions" -Filter *.ps1 | ForEach-Object {
     . $_.FullName
 }
@@ -87,21 +87,22 @@ function th {
 		}
 		# ========== temp
 		default {
-			Write-Host "`nUsage:" -ForegroundColor White
-			Write-Output "`nth kube   | k : Kubernetes login options"
-			Write-Output "th aws    | a : AWS login options"
-			Write-Output "th terra  | t : Log into yl-admin as sudo-admin"
-			Write-Output "th db     | d : Log into yl-admin as sudo-admin"
-			Write-Output "th logout | l : Logout from all proxies"
-			Write-Output "th login      : Simple login to Teleport"
-			Write-Output "--------------------------------------------------------------------------"
-			Write-Output "For specific instructions on any of the above, run: th <option> -h"
-			Write-Host "`nPages:" -ForegroundColor White
-			Write-Host "`nQuickstart: " -ForegroundColor White -NoNewLine
-			Write-Host "https://youlend.atlassian.net/wiki/spaces/ISS/pages/1384972392/TH+-+Teleport+Helper+Quick+Start" -ForegroundColor Blue
-			Write-Host "Docs: " -ForegroundColor White -NoNewLine
-			Write-Host "https://youlend.atlassian.net/wiki/spaces/ISS/pages/1378517027/TH+-+Teleport+Helper+Docs" -ForegroundColor Blue
-			Write-Host "`n--> (Hold CRTL + Click to open links)`n" -ForegroundColor White
+			print_help $version | Out-Host -Paging
+			# Write-Host "`nUsage:" -ForegroundColor White
+			# Write-Output "`nth kube   | k : Kubernetes login options"
+			# Write-Output "th aws    | a : AWS login options"
+			# Write-Output "th terra  | t : Log into yl-admin as sudo-admin"
+			# Write-Output "th db     | d : Log into yl-admin as sudo-admin"
+			# Write-Output "th logout | l : Logout from all proxies"
+			# Write-Output "th login      : Simple login to Teleport"
+			# Write-Output "--------------------------------------------------------------------------"
+			# Write-Output "For specific instructions on any of the above, run: th <option> -h"
+			# Write-Host "`nPages:" -ForegroundColor White
+			# Write-Host "`nQuickstart: " -ForegroundColor White -NoNewLine
+			# Write-Host "https://youlend.atlassian.net/wiki/spaces/ISS/pages/1384972392/TH+-+Teleport+Helper+Quick+Start" -ForegroundColor Blue
+			# Write-Host "Docs: " -ForegroundColor White -NoNewLine
+			# Write-Host "https://youlend.atlassian.net/wiki/spaces/ISS/pages/1378517027/TH+-+Teleport+Helper+Docs" -ForegroundColor Blue
+			# Write-Host "`n--> (Hold CRTL + Click to open links)`n" -ForegroundColor White
 		}
     }
 }
