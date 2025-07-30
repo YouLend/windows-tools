@@ -312,14 +312,13 @@ function raise_request {
 function terraform_login {
     th_login
     Clear-Host
-    Write-Host ""
     create_header "Terragrunt"
     tsh apps logout *>$null
-    Write-Host "`nLogging into " -ForegroundColor White -NoNewLine
+    Write-Host "Logging into " -ForegroundColor White -NoNewLine
     Write-Host "yl-admin " -ForegroundColor Green -NoNewLine
     Write-Host "as " -ForegroundColor White -NoNewLine
     Write-Host "sudo_admin" -ForegroundColor Green
     tsh apps login "yl-admin" --aws-role "sudo_admin" *>$null
-    Get-Credentials
-    Write-Output "`nLogged in successfully" -ForegroundColor Green
+    create_proxy
+    Write-Host "Logged in successfully`n" -ForegroundColor Green
 }

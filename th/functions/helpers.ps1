@@ -4,7 +4,6 @@
 
 function th_login {
     Clear-Host
-    Write-Host ""
     create_header "Login"
     Write-Host "Checking login status..."
     try {
@@ -42,7 +41,6 @@ function th_login {
 # ===========================
 function th_kill {
     Clear-Host
-    Write-Host ""
     create_header "Cleanup"
     # Unset AWS environment variables
     Remove-Item Env:AWS_ACCESS_KEY_ID -ErrorAction SilentlyContinue
@@ -100,6 +98,145 @@ function th_kill {
     Write-Host "`nLogged out of all apps & proxies.`n" -ForegroundColor Green
 }
 
+function Get-FreePort {
+    $listener = [System.Net.Sockets.TcpListener]::New([System.Net.IPAddress]::Loopback, 0)
+    $listener.Start()
+    $port = $listener.LocalEndpoint.Port
+    $listener.Stop()
+    return $port
+}
+
+function spinner {
+    param (
+        [int]$Pid,
+        [string]$Message = "Loading.."
+    )
+
+    $spinChars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏".ToCharArray()
+    $i = 0
+
+    # Hide cursor
+    Write-Host "`e[?25l" -NoNewline
+
+    while (Get-Process -Id $Pid -ErrorAction SilentlyContinue) {
+        $char = $spinChars[$i % $spinChars.Length]
+        Write-Host "`r`e[K$char $Message" -NoNewline
+        Start-Sleep -Milliseconds 100
+        $i++
+    }
+
+    # Clear line and restore cursor
+    Write-Host "`r`e[K" -NoNewline
+    Write-Host "`e[?25h"
+}
+
+function load {
+    param (
+        [ScriptBlock]$Job,
+        [string]$Message = "Loading..."
+    )
+
+    # Wrap the job to always import the module first
+    $wrappedJob = [ScriptBlock]::Create(@"
+        Import-Module '$($PSScriptRoot)\..\th.psm1' -Force
+        & { $($Job.ToString()) }
+"@)
+
+    $jobInstance = Start-Job -ScriptBlock $wrappedJob
+
+    try {
+        wave_loader -JobId $jobInstance.Id -Message $Message
+    }
+    finally {
+        Wait-Job $jobInstance | Out-Null
+        $result = Receive-Job $jobInstance
+        Remove-Job $jobInstance | Out-Null
+    }
+    
+    return $result
+}
+
+function wave_loader {
+    param (
+        [int]$JobId,
+        [int]$Pid,
+        [string]$Message = "Loading..."
+    )
+
+
+    $headerWidth = 65
+    $waveLen = $headerWidth
+    $blocks = @("▁", "▂", "▃", "▄", "▅", "▆", "▇", "█")
+    $pos = 0
+    $direction = 1
+
+    $msgLen = $Message.Length
+    $msgWithSpacesLen = $msgLen + 2
+    $msgStart = [math]::Floor(($waveLen - $msgWithSpacesLen) / 2)
+    $msgEnd = $msgStart + $msgWithSpacesLen
+
+    try {
+        while (($JobId -and (Get-Job -Id $JobId -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Running' })) -or ($Pid -and (Get-Process -Id $Pid -ErrorAction SilentlyContinue))) {
+            $line = ""
+            for ($i = 0; $i -lt $waveLen; $i++) {
+                if ($i -eq $pos) {
+                    $center = [math]::Floor($waveLen / 2)
+                    $distance = [math]::Abs($pos - $center)
+                    $maxDist = [math]::Floor($waveLen / 2)
+                    $boost = 7 - [math]::Floor($distance * 7 / $maxDist)
+                    if ($boost -lt 0) { $boost = 0 }
+                    $line += "$($blocks[$boost])"
+                }
+                elseif ($i -ge $msgStart -and $i -lt $msgEnd) {
+                    $charIdx = $i - $msgStart
+                    if ($charIdx -eq 0 -or $charIdx -eq ($msgWithSpacesLen - 1)) {
+                        $line += " "
+                    }
+                    else {
+                        $msgCharIdx = $charIdx - 1
+                        $line += $Message[$msgCharIdx]
+                    }
+                }
+                else {
+                    $line += " "
+                }
+            }
+
+            Write-Host "`r$line" -NoNewline
+
+            $pos += $direction
+            if ($pos -lt 0 -or $pos -ge $waveLen) {
+                $direction *= -1
+                $pos += $direction
+            }
+
+            $center = [math]::Floor($waveLen / 2)
+            $distance = [math]::Abs($pos - $center)
+            $maxDist = [math]::Floor($waveLen / 2)
+
+            # Speed adjustment
+            if ($distance -gt $maxDist * 0.9) {
+                Start-Sleep -Milliseconds 30
+            }
+            elseif ($distance -gt $maxDist * 0.8) {
+                Start-Sleep -Milliseconds 20
+            }
+            elseif ($distance -gt $maxDist * 0.75) {
+                Start-Sleep -Milliseconds 10
+            }
+            elseif ($distance -gt $maxDist / 2) {
+                Start-Sleep -Milliseconds 5
+            }
+            else {
+                Start-Sleep -Milliseconds 5
+            }
+        }
+    }
+    finally {
+        # Clear the entire line and move cursor to beginning
+        Write-Host "`r$(' ' * 80)`r" -NoNewline
+    }
+}
 # ========================================================================================================================
 #                                                       Visual Helpers
 # ========================================================================================================================
@@ -140,6 +277,7 @@ function create_header {
     $rightDashStr = ('━' * $rightDashes)
 
     # Top ruler
+    Write-Host ""
     Write-Host "$CenterSpaces" -NoNewline
     Write-Host "    ▄███████▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀███████████▀" -ForegroundColor DarkGray
 
@@ -177,7 +315,6 @@ function print_logo($Version, $CenterSpaces) {
     Write-Host "$CenterSpaces         ▕██████████████▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄█████████████▏" 
     Write-Host "$CenterSpaces          ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔"
     Write-Host "$CenterSpaces         ■■■■■■■■■" -NoNewline -ForegroundColor DarkGray; Write-Host " Teleport Helper - v$Version " -ForegroundColor White -NoNewline; Write-Host "■■■■■■■■■" -ForegroundColor DarkGray
-    Write-Host ""
 }
 
 function print_help($Version) {
@@ -193,27 +330,26 @@ function print_help($Version) {
     Write-Host "$centerSpaces     ╚═ th db         | d   : Log into our various databases." -ForegroundColor White
     Write-Host "$centerSpaces     ╚═ th terra      | t   : Quick log-in to Terragrunt." -ForegroundColor White
     Write-Host "$centerSpaces     ╚═ th logout     | l   : Clean up Teleport session." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th login            : Simple log in to Teleport." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th quickstart | qs  : Open quickstart guide in browser." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th docs       | doc : Open documentation in browser." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th login      | li  : Simple log in to Teleport." -ForegroundColor White
+    
 
     # Divider line
     Write-Host "$centerSpaces     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkGray
 
     # Note
-    Write-Host "$centerSpaces     For specific instructions, run th <option> -h`n"
+    Write-Host "$centerSpaces     For specific instructions, run th <option> -h"
 
     # Docs section
     create_header -HeaderText "Docs" -CenterSpaces $centerSpaces
     Write-Host "$centerSpaces     Run the following commands to access the documentation pages:"
-    Write-Host "$centerSpaces     ╚═ Quickstart:     th qs" -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ Docs:           th doc" -ForegroundColor White
-    Write-Host ""
+    Write-Host "$centerSpaces     ╚═ Quickstart:   | th qs" -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ Docs:         | th doc" -ForegroundColor White
 
     # Extras section
     create_header -HeaderText "Extras" -CenterSpaces $centerSpaces
     Write-Host "$centerSpaces     Run the following commands to access the extra features:"
-    Write-Host "$centerSpaces     ╚═ th animate [option] : Run animation." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th loader           : Run loader animation." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th animate [option] : Run logo animation." -ForegroundColor White
     Write-Host "$centerSpaces        ╚═ yl" -ForegroundColor White
     Write-Host "$centerSpaces        ╚═ th" -ForegroundColor White
 
@@ -224,6 +360,37 @@ function print_help($Version) {
     Write-Host "$centerSpaces           ▔▔▔▔▔▔▔▔▔▔▔▔▔▔" -ForegroundColor DarkGray -NoNewLine
     Write-Host "   ▀  ▀▔▀   " -ForegroundColor White -NoNewLine
     Write-Host "▔▔▔▔▔▔▔▔▔▔▔▔▔" -ForegroundColor DarkGray -NoNewLine
+}
+
+function demo_wave_loader {
+    param (
+        [string]$Message = "Demo Wave Loader"
+    )
+
+    # Clear screen and notify user
+    Clear-Host
+    Write-Host "`nPress Ctrl+C to exit (Spam it, if it doesn't work first time!)`n" -ForegroundColor Yellow
+
+    # Create a dummy background process
+    $proc = Start-Process -FilePath "powershell" -ArgumentList "-NoProfile", "-Command", "Start-Sleep -Seconds 99999" -PassThru -WindowStyle Hidden
+
+    # Trap Ctrl+C and clean up
+    $cleanup = {
+        try {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+        } catch {}
+        Write-Host "`e[?25h`n"
+        exit 0
+    }
+    Register-EngineEvent PowerShell.Exiting -Action $cleanup | Out-Null
+
+    try {
+        wave_loader -Pid $proc.Id -Message $Message
+    } finally {
+        if (!$proc.HasExited) {
+            $proc.Kill()
+        }
+    }
 }
 
 # ========================================================================================================================

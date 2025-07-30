@@ -1,6 +1,6 @@
 # Load all function files
 $moduleRoot = $PSScriptRoot
-$version = "1.4.1"
+$version = "1.4.4"
 Get-ChildItem -Path "$moduleRoot/functions" -Filter *.ps1 | ForEach-Object {
     . $_.FullName
 }
@@ -60,6 +60,9 @@ function th {
 			} else {
 			tsh login --auth=ad --proxy=youlend.teleport.sh:443
 			}
+		}
+		{ $_ -in @("loader") } {
+			demo_wave_loader
 		}
 		# ========== temp
 		{ $_ -in @("kill", "kl") } {

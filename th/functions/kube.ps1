@@ -1,6 +1,80 @@
 # ============================================================
 # ======================= Kubernetes =========================
 # ============================================================
+
+# Cluster environment mapping
+function get_cluster_name {
+    param([string]$env)
+    
+    switch ($env) {
+        "dev" { return "aslive-dev-eks-blue" }
+        "sandbox" { return "aslive-sandbox-eks-blue" }
+        "staging" { return "aslive-staging-eks-blue" }
+        "usstaging" { return "aslive-usstaging-eks-blue" }
+        "admin" { return "headquarter-admin-eks-green" }
+        "prod" { return "live-prod-eks-blue" }
+        "usprod" { return "live-usprod-eks-blue" }
+        "corepgblue" { return "platform-corepgblue-eks-blue" }
+        "corepggreen" { return "platform-corepggreen-eks-green" }
+        default { return "" }
+    }
+}
+
+function check_kube_login {
+    $output = tsh kube ls -f json
+    $clusters = ($output | ConvertFrom-Json) | ForEach-Object { $_.kube_cluster_name } | Where-Object { $_ -and $_.Trim() -ne "" }
+
+    if (-not $clusters) {
+        return @{ success = $false; error = "No Kubernetes clusters available." }
+    }
+
+    $accessStatus = "unknown"
+    $testCluster = $null
+    $clusterNames = @()
+    $statuses = @()
+
+    # Collect cluster names, pick test cluster
+    foreach ($cluster in $clusters) {
+        if (-not [string]::IsNullOrWhiteSpace($cluster)) {
+            $clusterNames += $cluster
+            if (-not $testCluster -and ($cluster -match "prod")) {
+                $testCluster = $cluster
+            }
+        }
+    }
+
+    # Test access with one prod cluster if we found one
+    if ($testCluster) {
+        try {
+            tsh kube login $testCluster *>$null
+            $canCreate = kubectl auth can-i create pod 2>$null
+            if ($canCreate -eq "yes") {
+                $accessStatus = "ok"
+            } else {
+                $accessStatus = "fail"
+            }
+        } catch {
+            $accessStatus = "fail"
+        }
+    }
+
+    # Build status array
+    foreach ($cluster in $clusterNames) {
+        if ($cluster -match "prod") {
+            $statuses += $accessStatus
+        } else {
+            $statuses += "n/a"
+        }
+    }
+
+    # Return results as hashtable
+    return @{
+        success = $true
+        clusters = $clusterNames
+        statuses = $statuses
+    }
+}
+
 # th kube handler function 
 function tkube {
     param (
@@ -38,63 +112,72 @@ function tkube {
 }
 
 function kube_login {
+    param([string]$envArg)
+    
     if ($env:reauth_kube -eq "TRUE") {
-        Write-Host "`nRe-Authenticating`n" -ForegroundColor White
+        Write-Host "`n" -NoNewLine
+        Write-Host "Re-Authenticating" -ForegroundColor White
+        Write-Host "`n"
         tsh logout
         tsh login --auth=ad --proxy=youlend.teleport.sh:443 --request-id="$env:REQUEST_ID" *> $null
         $env:reauth_kube = "FALSE"
+        return
     }
     else {
         th_login
     }
+    
+    # Direct login if environment argument provided
+    if ($envArg) {
+        $clusterName = get_cluster_name $envArg
+        
+        if (-not $clusterName) {
+            Write-Host "`n" -NoNewLine
+            Write-Host "Unknown environment: $envArg" -ForegroundColor Red
+            Write-Host "`nAvailable environments: dev, sandbox, staging, usstaging, admin, prod, usprod, corepgblue, corepggreen"
+            return 1
+        }
 
-    $output = tsh kube ls --format=json | ConvertFrom-Json
-    $clusters = $output | ForEach-Object { $_.kube_cluster_name } | Where-Object { $_ }
+        Clear-Host
+        create_header "Kube Login"
+        
+        Write-Host "Logging you into: " -NoNewLine
+        Write-Host $clusterName -ForegroundColor Green
 
-    if (-not $clusters) {
-        Write-Host "No Kubernetes clusters available." -ForegroundColor Red
+        tsh kube login $clusterName *> $null
+        
+        Write-Host "`nLogged in successfully!`n"
+        return
+    }
+
+    Clear-Host
+    create_header "Available Clusters"
+
+    # Use load function for cluster access checking
+    $results = load -Job { check_kube_login } -Message "Checking cluster access..."
+
+    if (-not $results.success) {
+        Write-Host "$($results.error)" -ForegroundColor Red
         return 1
     }
 
-    Write-Host "`nAvailable Clusters:`n" -ForegroundColor White
+    # Ensure arrays are properly handled
+    $clusterLines = @($results.clusters)
+    $loginStatus = @($results.statuses)
 
-    $clusterLines = @()
-    $loginStatus = @()
-
-    for ($i = 0; $i -lt $clusters.Count; $i++) {
-        $clusterName = $clusters[$i]
-        $clusterLines += $clusterName
-
-        if ($clusterName -like "*prod*") {
-            try {
-                tsh kube login $clusterName *>$null
-
-                $canCreate = kubectl auth can-i create pod 2>$null
-                if ($canCreate -eq "yes") {
-                    $loginStatus += "ok"
-                } else {
-                    $loginStatus += "fail"
-                }
-            } catch {
-                $loginStatus += "fail"
-            }
-        } else {
-            $loginStatus += "n/a"
-        }
-    }
-
+    # Print results
     for ($i = 0; $i -lt $clusterLines.Count; $i++) {
         $line = $clusterLines[$i]
         $status = $loginStatus[$i]
 
         switch ($status) {
             "ok"   { Write-Host ("{0,2}. {1}" -f ($i + 1), $line) -ForegroundColor White}
-            "fail" { Write-Host ("{0,2}. {1}" -f ($i + 1), $line) -ForegroundColor Gray}
+            "fail" { Write-Host ("{0,2}. {1}" -f ($i + 1), $line) -ForegroundColor DarkGray}
             "n/a"  { Write-Host ("{0,2}. {1}" -f ($i + 1), $line) -ForegroundColor White}
         }
     }
 
-    Write-Host "`nSelect cluster (number): " -NoNewLine
+    Write-Host "`nSelect cluster (number): " -ForegroundColor White -NoNewLine
     $choice = Read-Host
 
     if (-not $choice -or -not ($choice -match '^\d+$')) {
@@ -113,44 +196,62 @@ function kube_login {
 
     if ($selectedStatus -eq "fail") {
         kube_elevated_login $selectedCluster
-        Write-Host
-        tsh kube login $selectedCluster
-    } else {
-        Write-Host "`nLogging you into: " -NoNewLine
+        Write-Host "`n" -NoNewLine
+        Write-Host "Logging you into: " -NoNewLine
         Write-Host $selectedCluster -ForegroundColor Green
-        tsh kube login $selectedCluster
+        tsh kube login $selectedCluster *> $null
+        Write-Host "`n✅ " -NoNewLine
+        Write-Host "Logged in successfully!" -ForegroundColor White
+        Write-Host "`n"
+    } else {
+        Write-Host "`n" -NoNewLine
+        Write-Host "Logging you into: " -NoNewLine
+        Write-Host $selectedCluster -ForegroundColor Green
+        tsh kube login $selectedCluster *> $null
+        Write-Host "`n✅ " -NoNewLine
+        Write-Host "Logged in successfully!" -ForegroundColor White
+        Write-Host "`n"
     }
 }
 
 function kube_elevated_login($cluster) {
     while ($true) {
         Clear-Host
-        Write-Host "`n==================== Privileged Access =====================" -ForegroundColor White
-        Write-Host
-        Write-Host "You don't have admin access to " -NoNewLine
-        Write-Host "$cluster." -ForegroundColor White
-        Write-Host "`nWould you like to raise a request? (y/n): " -ForegroundColor White -NoNewLine
+        create_header "Privilege Request"
+        Write-Host "`n`nYou don't have write access to " -NoNewLine
+        Write-Host "$cluster" -ForegroundColor White
+        Write-Host "." -NoNewLine
+        Write-Host "`n`n" -NoNewLine
+        Write-Host "Would you like to raise a request?" -ForegroundColor White
+        Write-Host "`n`n" -NoNewLine
+        Write-Host "Note:" -ForegroundColor White -NoNewLine
+        Write-Host " Entering (N/n) will log you in as a read-only user."
+        Write-Host "`n(Yy/Nn): " -NoNewLine
         $elevated = Read-Host
         
         if ($elevated -match '^[Yy]$') {
-            # Placeholder: Add checks for new Kubernetes roles here if needed
-            Write-Host "`nEnter your reason for request: " -ForegroundColor White -NoNewLine
+            Write-Host "`n" -NoNewLine
+            Write-Host "Enter your reason for request: " -ForegroundColor White -NoNewLine
             $reason = Read-Host
 
-            Write-Host "`nAccess request sent for: " -ForegroundColor White -NoNewLine
-            Write-Host "production-eks-clusters" -ForegroundColor Green
+            $requestOutput = ""
+            if ($cluster -eq 'live-prod-eks-blue') {
+                $requestOutput = tsh request create --roles sudo_prod_eks_cluster --reason "$reason"
+            }
+            elseif ($cluster -eq 'live-usprod-eks-blue') {
+                $requestOutput = tsh request create --roles sudo_usprod_eks_cluster --reason "$reason"
+            }
+            else {
+                Write-Host "`nCluster doesn't exist" -ForegroundColor Red
+                continue
+            }
 
-            $rawOutputLines = @()
-            tsh request create --roles production-eks-clusters --reason "$reason" |
-                Tee-Object -Variable rawOutputLines |
-                ForEach-Object { Write-Host $_ }
+            # Extract request ID
+            $env:REQUEST_ID = ($requestOutput | Select-String "Request ID:" | ForEach-Object { $_.Line -replace ".*Request ID:\s*", "" }).Trim()
 
-            # Join the lines back into a single string (for parsing)
-            $rawOutput = $rawOutputLines -join "`n"
-
-            # Extract the Request ID
-            $env:REQUEST_ID = ($rawOutput -split "`n" | Where-Object { $_ -match '^Request ID' }) -replace 'Request ID:\s*', '' | ForEach-Object { $_.Trim() }
-            $env:reauth_kube = "true"
+            Write-Host "`n`n✅ " -NoNewLine
+            Write-Host "Access request sent!" -ForegroundColor Green
+            Write-Host "`n"
             return
         }
         elseif ($elevated -match '^[Nn]$') {
@@ -159,7 +260,9 @@ function kube_elevated_login($cluster) {
             return
         }
         else {
-            Write-Host "Invalid input. Please enter Y or N."
+            Write-Host "`n" -NoNewLine
+            Write-Host "Invalid input. Please enter y or n." -ForegroundColor Red
+            Write-Host
         }
     }
 }

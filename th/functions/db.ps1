@@ -1,11 +1,87 @@
 # ============================================================
 # ======================== Databases =========================
 # ============================================================
+function check_rds_login {
+    $output = tsh db ls --format=json
+    $dbs = ($output | ConvertFrom-Json) | Where-Object { $_.metadata.labels.db_type -eq "rds" } | Select-Object -ExpandProperty metadata | Select-Object -ExpandProperty name
+
+    $accessStatus = "unknown"
+    $testDb = $null
+    $databases = @()
+    $statuses = @()
+
+    # Collect DB names, pick test DB
+    foreach ($db in $dbs) {
+        if (-not [string]::IsNullOrWhiteSpace($db)) {
+            $databases += $db
+            if (-not $testDb -and ($db -match "prod" -or $db -match "sandbox")) {
+                $testDb = $db
+            }
+        }
+    }
+
+    # Run proxy and check access
+    if ($testDb) {
+        $proxyOutFile = [System.IO.Path]::GetTempFileName()
+        $proxyErrFile = [System.IO.Path]::GetTempFileName()
+        $proxy = Start-Process tsh -ArgumentList "proxy", "db", $testDb, "--db-name", "postgres", "--db-user", "tf_teleport_rds_read_user", "--tunnel" `
+            -NoNewWindow -PassThru -RedirectStandardOutput $proxyOutFile -RedirectStandardError $proxyErrFile
+
+        $psqlUrl = $null
+        for ($i = 0; $i -lt 20; $i++) {
+            Start-Sleep -Milliseconds 500
+            if (Select-String -Path $proxyOutFile -Pattern 'psql postgres://.*@localhost:\d+/postgres' -Quiet) {
+                $matchLine = Get-Content $proxyOutFile | Select-String 'psql postgres://.*@localhost:\d+/postgres' | Select-Object -First 1
+                if ($matchLine -match 'psql (postgres://[^ ]+)') {
+                    $psqlUrl = $matches[1]
+                } else {
+                    $psqlUrl = $null
+                }
+                break
+            }
+        }
+
+        if ($psqlUrl) {
+            $env:PGPASSWORD = $env:PGPASSWORD  # Ensure available
+            $testResult = & psql $psqlUrl -c "SELECT 1;" 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $accessStatus = "ok"
+            } else {
+                $accessStatus = "fail"
+            }
+        } else {
+            $accessStatus = "fail"
+        }
+
+        Stop-Process -Id $proxy.Id -Force
+        Start-Sleep -Milliseconds 500  # Wait for process to fully stop
+        try {
+            Remove-Item $proxyOutFile -Force -ErrorAction SilentlyContinue
+        } catch {}
+        try {
+            Remove-Item $proxyErrFile -Force -ErrorAction SilentlyContinue
+        } catch {}
+    }
+
+    # Build status array
+    foreach ($db in $databases) {
+        if ($db -match "prod" -or $db -match "sandbox") {
+            $statuses += $accessStatus
+        } else {
+            $statuses += "n/a"
+        }
+    }
+
+    # Return results as hashtable
+    return @{
+        databases = $databases
+        statuses = $statuses
+    }
+}
 
 function db_login {
     th_login
     Clear-Host
-    Write-Host ""
     create_header "DB"
     Write-Host "Which database would you like to connect to: "
     Write-Host "`n1. " -NoNewLine
@@ -31,22 +107,21 @@ function db_login {
             # Get the list of databases
             $output = tsh db ls --format=json | ConvertFrom-Json
 
-            # Filter for RDS only
+            # Filter for non-RDS (MongoDB) databases
             $dbs = $output | Where-Object { $_.metadata.labels.db_type -ne "rds" }
 
-            # If no RDS databases are listed, prompt for elevated login
+            # If no MongoDB databases are listed, prompt for elevated login
             if (-not $dbs) {
                 Clear-Host
-                Write-Host ""
                 create_header "Privilege Request"
                 Write-Host "You don't have access to any databases..." -ForegroundColor White
                 Write-Host "`nWould you like to raise a request? (y/n): " -ForegroundColor White -NoNewLine
                 $elevated = Read-Host
                 if ($elevated -match '^[Yy]$') {
-                    db_elevated_login
+                    db_elevated_login "atlas-read-only"
                     break
                 }
-                if ($elevated -match '^[Yy]$') {
+                if ($elevated -match '^[Nn]$') {
                     return
                 }
                 break
@@ -70,22 +145,32 @@ function db_login {
     }
 
     # Fetch and parse JSON output from tsh
-    $jsonOutput = tsh db ls --format=json | ConvertFrom-Json
+    $json_output = tsh db ls --format=json | ConvertFrom-Json
+
+    # Clear screen and show header
+    Clear-Host
+    create_header "Available Databases"
 
     if ($db_type -eq "rds") {
-        $filteredDbs = $jsonOutput | Where-Object { $_.metadata.labels.db_type -eq $db_type  }
+        $results = load -Job { check_rds_login } -Message "Checking cluster access..."
+        
+        # Print results
+        for ($i = 0; $i -lt $results.databases.Count; $i++) {
+            $status = $results.statuses[$i]
+            switch ($status) {
+                "ok"    { Write-Host ("{0,2}. {1}" -f ($i + 1), $results.databases[$i]) }
+                "fail"  { Write-Host ("{0,2}. {1}" -f ($i + 1), $results.databases[$i]) -ForegroundColor DarkGray }
+                default { Write-Host ("{0,2}. {1}" -f ($i + 1), $results.databases[$i]) }
+            }
+        }
+        $filtered = $json_output | Where-Object { $_.metadata.labels.db_type -eq "rds" }
     } else {
-        $filteredDbs = $jsonOutput | Where-Object { $_.metadata.labels.db_type -ne "rds" }
-    }
-
-    # Display full names with numbering
-    Clear-Host
-    Write-Host ""
-    create_header "Available Databases" 
-    $i = 1
-    foreach ($db in $filteredDbs) {
-        Write-Host ("{0}. {1}" -f $i, $db.metadata.name) -ForegroundColor White
-        $i++
+        $filtered = $json_output | Where-Object { $_.metadata.labels.db_type -ne "rds" }
+        $i = 1
+        foreach ($db in $filtered) {
+            Write-Host ("{0}. {1}" -f $i, $db.metadata.name) -ForegroundColor White
+            $i++
+        }
     }
 
     # Prompt for selection
@@ -94,8 +179,8 @@ function db_login {
 
     while (-not $chosen_db) {
         $index = [int]$db_choice - 1
-        if ($index -ge 0 -and $index -lt $filteredDbs.Count) {
-            $chosen_db = $filteredDbs[$index]
+        if ($index -ge 0 -and $index -lt $filtered.Count) {
+            $chosen_db = $filtered[$index]
         } else {
             Write-Host "`nInvalid selection" -ForegroundColor Red
             Write-Host "`nSelect database (number): " -ForegroundColor White -NoNewLine
@@ -118,16 +203,21 @@ function db_login {
     mongo_connect $db
 }
 
-function db_elevated_login() {
-
+function db_elevated_login($role = "atlas-read-only") {
     while ($true) {
+        Clear-Host
+        create_header "Privilege Request"
+        Write-Host "You don't have access to any databases..." -ForegroundColor White
+        Write-Host "`nWould you like to raise a request? (y/n): " -ForegroundColor White -NoNewLine
+        $elevated = Read-Host
+        
         if ($elevated -match '^[Yy]$') {
             Write-Host "`nEnter your reason for request: " -ForegroundColor White -NoNewLine
             $reason = Read-Host
             Write-Host 
             # Create a buffer to store output line-by-line while also printing to the console
             $rawOutputLines = @()
-            tsh request create --roles atlas-read-only --reason "$reason" --max-duration 6h |
+            tsh request create --roles $role --reason "$reason" --max-duration 6h |
                 Tee-Object -Variable rawOutputLines |
                 ForEach-Object { Write-Host $_ }
 
@@ -146,7 +236,7 @@ function db_elevated_login() {
             return
         }
         else {
-            Write-Host "`nInvalid input. Please enter y or n."
+            Write-Host "`nInvalid input. Please enter y or n." -ForegroundColor Red
         }
     }
 }
@@ -166,7 +256,6 @@ function open_dbeaver($rds, $db_user, $database) {
         "-WindowStyle", "Minimized",
         "-Command", "tsh proxy db `"$rds`" --db-name=`"$database`" --port=50000 --tunnel --db-user=$db_user"
     )
-    Write-Host ""
     create_header "DBeaver"
     Write-Host "To connect to the database, follow these steps:`n"
     Write-Host "1. Once DBeaver opens click create a new connection in the very top left."
@@ -201,6 +290,52 @@ function open_dbeaver($rds, $db_user, $database) {
     }
 }
 
+function fetch_postgres_dbs($rds) {
+    $dbUser = "tf_teleport_rds_read_user"
+    $port = Get-FreePort
+
+    # Start proxy and keep track of process
+    $proxyProc = Start-Process tsh -ArgumentList @(
+        "proxy", "db", $rds,
+        "--tunnel",
+        "--port=$port",
+        "--db-user=$dbUser",
+        "--db-name=postgres"
+    ) -PassThru -WindowStyle Hidden
+
+    # Wait for proxy port to open (max 10s)
+    $portOpen = $false
+    for ($i = 0; $i -lt 10; $i++) {
+        Start-Sleep -Seconds 1
+        try {
+            $tcp = New-Object System.Net.Sockets.TcpClient("localhost", $port)
+            if ($tcp.Connected) {
+                $tcp.Close()
+                $portOpen = $true
+                break
+            }
+        } catch {}
+    }
+
+    if (-not $portOpen) {
+        try { $proxyProc.Kill() } catch {}
+        return @{ success = $false; error = "Failed to establish tunnel to database." }
+    }
+
+    $query = "SELECT datname FROM pg_database WHERE datistemplate = false;"
+    $dbList = & psql "postgres://$dbUser@localhost:$port/postgres" -t -A -c $query 2>$null
+
+    # Cleanup
+    try { $proxyProc.Kill() } catch {}
+
+    if ([string]::IsNullOrWhiteSpace($dbList)) {
+        return @{ success = $false; error = "No databases found or connection failed." }
+    }
+
+    $databases = $dbList -split "`n" | Where-Object { $_.Trim() -ne "" }
+    return @{ success = $true; databases = $databases }
+}
+
 function rds_connect($rds) {
     $db_user = "tf_teleport_rds_read_user"
 
@@ -209,9 +344,8 @@ function rds_connect($rds) {
     Start-Sleep -Seconds 1
 
     Clear-Host
-    Write-Host ""
     create_header "Connect"
-    Write-Host "`nHow would you like to connect?`n"
+    Write-Host "How would you like to connect?`n"
     Write-Host "1. Via " -NoNewLine
     Write-Host "PSQL" -ForegroundColor White
     Write-Host "2. Via " -NoNewLine
@@ -227,12 +361,12 @@ function rds_connect($rds) {
 
     function check_admin {   
         $tshStatus = tsh status
-        if ($tshStatus -match '\bsudo_teleport_rds_user\b') {
+        if ($tshStatus -match '\bsudo_teleport_rds_write_role\b') {
             Write-Host "`nConnecting as admin? (y/n): " -NoNewline
             $admin = Read-Host
 
             if ($admin -match '^[Yy]$') {
-                $db_user = "sudo_teleport_rds_user"
+                $db_user = "tf_sudo_teleport_rds_user"
             }
         }
         return $db_user
@@ -259,68 +393,23 @@ function rds_connect($rds) {
     }
 
     function list_postgres_dbs($rds) {
-
-        $dbUser = "tf_teleport_rds_read_user"
-
         Clear-Host
-        Write-Host ""
         create_header "Available Databases"
 
-        Write-Host "Fetching list of databases from " -ForegroundColor White -NoNewLine
-        Write-Host "$rds..." -ForegroundColor Green
+        # Use load function for the database fetching
+        $result = load -Job { fetch_postgres_dbs $using:rds } -Message "Fetching databases..."
 
-        function Get-FreePort {
-            $listener = [System.Net.Sockets.TcpListener]::New([System.Net.IPAddress]::Loopback, 0)
-            $listener.Start()
-            $port = $listener.LocalEndpoint.Port
-            $listener.Stop()
-            return $port
-        }
-
-        $port = Get-FreePort
-
-        # Start proxy and keep track of process
-        $proxyProc = Start-Process tsh -ArgumentList @(
-            "proxy", "db", $rds,
-            "--tunnel",
-            "--port=$port",
-            "--db-user=$dbUser",
-            "--db-name=postgres"
-        ) -PassThru -WindowStyle Hidden
-
-        # Wait for proxy port to open (max 10s)
-        $portOpen = $false
-        for ($i = 0; $i -lt 10; $i++) {
-            Start-Sleep -Seconds 1
-            try {
-                $tcp = New-Object System.Net.Sockets.TcpClient("localhost", $port)
-                if ($tcp.Connected) {
-                    $tcp.Close()
-                    $portOpen = $true
-                    break
-                }
-            } catch {}
-        }
-
-        if (-not $portOpen) {
-            Write-Host "`n❌ Failed to establish tunnel to database." -ForegroundColor Red
-            try { $proxyProc.Kill() } catch {}
+        if (-not $result.success) {
+            Write-Host "`n❌ $($result.error)" -ForegroundColor Red
             return
         }
 
-        $query = "SELECT datname FROM pg_database WHERE datistemplate = false;"
-        $dbList = & psql "postgres://$dbUser@localhost:$port/postgres" -t -A -c $query 2>$null
+        # Ensure databases is treated as a proper array
+        $databases = @($result.databases)
+        $dbCount = $databases.Count
 
-        if ([string]::IsNullOrWhiteSpace($dbList)) {
-            Write-Host "❌ No databases found or connection failed." -ForegroundColor Red
-            try { $proxyProc.Kill() } catch {}
-            return
-        }
-
-        $databases = $dbList -split "`n" | Where-Object { $_.Trim() -ne "" }
-
-        [Console]::SetCursorPosition(0, [Console]::CursorTop - 1); Write-Host (' ' * [Console]::WindowWidth); [Console]::SetCursorPosition(0, [Console]::CursorTop - 2)
-        for ($i = 0; $i -lt $databases.Length; $i++) {
+        # Display results
+        for ($i = 0; $i -lt $dbCount; $i++) {
             $index = $i + 1
             Write-Host "$index. $($databases[$i])" 
         }
@@ -328,17 +417,12 @@ function rds_connect($rds) {
         Write-Host "`nSelect database (number): " -ForegroundColor White -NoNewline
         $choice = Read-Host
 
-        if (-not $choice -or -not ($choice -as [int]) -or $choice -lt 1 -or $choice -gt $databases.Length) {
+        if (-not $choice -or -not ($choice -as [int]) -or $choice -lt 1 -or $choice -gt $dbCount) {
             Write-Host "`nInvalid selection. Exiting." -ForegroundColor Red
-            try { $proxyProc.Kill() } catch {}
             return
         }
 
         $database = $databases[$choice - 1]
-
-        # Cleanup
-        try { $proxyProc.Kill() } catch {}
-
         return $database
     }
 
@@ -383,7 +467,6 @@ function mongo_connect($db) {
     }
     
     Clear-Host
-    Write-Host ""
     create_header "MongoDB"
     Write-Host "How would you like to connect?"
     Write-Host "`n1. Via " -NoNewLine
@@ -396,14 +479,21 @@ function mongo_connect($db) {
         switch ($option) {
             "1" {
                 Clear-Host
-                $output = tsh db connect $db --db-user=$db_user --db-name=admin
-
-                if ($output -match 'exec: "mongosh": executable file not found in %PATH%') {
-                    Clear-Host
+                
+                # Check if mongosh is available
+                try {
+                    $output = mongosh --version 2>$null
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "Command failed"
+                    }
+                } catch {
                     Write-Host "`nMongoDB Shell (mongosh) not found in PATH." -ForegroundColor Red
                     Write-Host "`nYou can install it from:"
                     Write-Host "`nhttps://www.mongodb.com/try/download/shell`n"
-                } 
+                    return
+                }
+                
+                tsh db connect $db --db-user=$db_user --db-name=admin
                 return
             }
             "2" {
