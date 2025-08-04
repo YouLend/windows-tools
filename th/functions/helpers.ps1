@@ -16,6 +16,7 @@ function th_login {
     $status = tsh status 2>$null
     if ($status -match 'Logged in as:') {
         Write-Host "`nAlready logged in to Teleport!" -ForegroundColor White
+        Start-Sleep -Milliseconds 500
         return
     }
 
@@ -132,28 +133,63 @@ function spinner {
 
 function load {
     param (
+        [Parameter(ParameterSetName="SingleJob")]
         [ScriptBlock]$Job,
+        
+        [Parameter(ParameterSetName="MultipleJobs")]
+        [hashtable]$Jobs,
+        
         [string]$Message = "Loading..."
     )
 
-    # Wrap the job to always import the module first
-    $wrappedJob = [ScriptBlock]::Create(@"
-        Import-Module '$($PSScriptRoot)\..\th.psm1' -Force
-        & { $($Job.ToString()) }
+    if ($PSCmdlet.ParameterSetName -eq "SingleJob") {
+        # Original single job logic
+        $wrappedJob = [ScriptBlock]::Create(@"
+            Import-Module '$($PSScriptRoot)\..\th.psm1' -Force
+            & { $($Job.ToString()) }
 "@)
 
-    $jobInstance = Start-Job -ScriptBlock $wrappedJob
+        $jobInstance = Start-Job -ScriptBlock $wrappedJob
 
-    try {
-        wave_loader -JobId $jobInstance.Id -Message $Message
+        try {
+            wave_loader -JobId $jobInstance.Id -Message $Message
+        }
+        finally {
+            Wait-Job $jobInstance | Out-Null
+            $result = Receive-Job $jobInstance
+            Remove-Job $jobInstance | Out-Null
+        }
+        
+        return $result
     }
-    finally {
-        Wait-Job $jobInstance | Out-Null
-        $result = Receive-Job $jobInstance
-        Remove-Job $jobInstance | Out-Null
+    else {
+        # Multiple jobs logic
+        $jobInstances = @{}
+        
+        foreach ($jobName in $Jobs.Keys) {
+            $wrappedJob = [ScriptBlock]::Create(@"
+                Import-Module '$($PSScriptRoot)\..\th.psm1' -Force
+                & { $($Jobs[$jobName].ToString()) }
+"@)
+            $jobInstances[$jobName] = Start-Job -ScriptBlock $wrappedJob
+        }
+
+        try {
+            # Use the first job's ID for the loader (all should finish around same time)
+            $firstJobId = ($jobInstances.Values | Select-Object -First 1).Id
+            wave_loader -JobId $firstJobId -Message $Message
+        }
+        finally {
+            $results = @{}
+            foreach ($jobName in $jobInstances.Keys) {
+                Wait-Job $jobInstances[$jobName] | Out-Null
+                $results[$jobName] = Receive-Job $jobInstances[$jobName]
+                Remove-Job $jobInstances[$jobName] | Out-Null
+            }
+        }
+        
+        return $results
     }
-    
-    return $result
 }
 
 function wave_loader {

@@ -2,6 +2,7 @@
 # =========================== AWS ============================
 # ============================================================
 function aws_login {
+    # If returning from aws_elevated_login reauthenticate with request_id 
     if ($env:reauth_aws -eq "TRUE"){
         Write-Host "`nRe-Authenticating`n" -ForegroundColor White
         tsh logout
@@ -11,14 +12,15 @@ function aws_login {
     else {
         th_login
     }
-    # Get the list of apps
-    $output = tsh apps ls -f text
-    if (-not $output) {
-        Write-Host "No apps available."
+
+    # If arguments provided, use quick login
+    if ($args.Count -gt 0) {
+        aws_quick_login @args
         return
     }
-
-    # Get list of apps in JSON format
+    
+    # =====================================
+    # Get the list of apps
     $jsonOutput = tsh apps ls --format=json | ConvertFrom-Json
 
     # Display full names with numbering
@@ -86,38 +88,11 @@ function aws_login {
         }
     }
 
-    if (-not $roleSection) {
-        $defaultRole = ($loginOutput | Select-String -Pattern 'arn:aws:iam::[^ ]*').Matches.Value -replace '^.*role/', ''
-        Clear-Host
-        Clear-Host
-        create_header "Privilege Request"
-        Write-Host "`nNo privileged roles found. Your only available role is: " -NoNewLine
-        Write-Host $defaultRole -ForegroundColor Green
-        while ($true) {
-            Write-Host "`nWould you like to raise a privilege request?"
-            create_note "Entering (n) will log you in as prod"
-            $request = Read-Host "(y/n)"
-            $request = $request.Trim()
+    Write-Host $loginOutput
+    $defaultRole = ($loginOutput | Select-String -Pattern 'arn:aws:iam::[^ ]*').Matches.Value -replace '^.*role/', ''
 
-            if ($request -match '^[Yy]$') {
-                raise_request $app
-                aws_login
-                return
-            }
-            elseif ($request -match '^[Nn]$') {
-                Write-Host "`nLogging you into " -ForegroundColor White -NoNewLine
-                Write-Host $app -ForegroundColor Green -NoNewLine
-                Write-Host " as " -ForegroundColor White -NoNewLine
-                Write-Host $defaultRole -ForegroundColor Green
-                tsh apps login $app --aws-role $defaultRole *>$null
-                Write-Host "`nLogged in successfully!" -ForegroundColor Green
-                create_proxy
-                return
-            }
-            else {
-                Write-Host "Invalid input. Please enter Y or N." -ForegroundColor Red
-            }
-        }
+    if (-not $roleSection) {
+        aws_elevated_login $app $defaultRole
     }
 
     $rolesList = $roleSection[2..($roleSection.Count - 1)]
@@ -128,6 +103,7 @@ function aws_login {
         tsh apps login $app
         return
     }
+    # Print available roles
     Clear-Host
     Write-Host
     create_header "Available Roles"
@@ -141,13 +117,13 @@ function aws_login {
     $roleChoice = Read-Host 
     if (-not $roleChoice -or -not ($roleChoice -match '^\d+$')) {
         Write-Host "No valid selection made. Exiting."
-        return 1
+        return
     }
 
     $roleIndex = [int]$roleChoice - 1
     if ($roleIndex -lt 0 -or $roleIndex -ge $rolesList.Count) {
         Write-Host "Invalid selection."
-        return 1
+        return
     }
 
     $roleLine = $rolesList[$roleIndex]
@@ -155,7 +131,7 @@ function aws_login {
 
     if (-not $roleName) {
         Write-Host "Invalid selection."
-        return 1
+        return
     }
 
     Write-Host "`nLogging you into " -ForegroundColor White -NoNewLine
@@ -167,10 +143,80 @@ function aws_login {
     create_proxy
 }
 
-function create_proxy {
-    # Get active app
-    $app = & tsh apps ls -f text | ForEach-Object {
-        if ($_ -match '^>\s+(\S+)') { $matches[1] }
+# AWS account mapping
+function load_aws_config {
+    param([string]$env)
+    
+    $scriptDir = Split-Path -Parent $PSScriptRoot
+    $configFile = Join-Path $scriptDir "/config.json"
+    
+    if (-not (Test-Path $configFile)) {
+        return ""
+    }
+    
+    try {
+        $config = Get-Content $configFile | ConvertFrom-Json
+        return $config.aws.$env
+    }
+    catch {
+        Write-Host "Error reading config file: $_" -ForegroundColor Red
+        return ""
+    }
+}
+
+# Quick AWS login
+function aws_quick_login {
+    param(
+        [string]$env_arg,
+        [string]$sudo_flag
+    )
+    
+    if (-not $env_arg) {
+        Write-Host "Usage: aws_quick_login <environment> [s]"
+        Write-Host "Available environments: dev, sandbox, staging, usstaging, admin, prod, usprod, corepgblue, corepggreen"
+        return
+    }
+    
+    $account_name = load_aws_config $env_arg
+    if (-not $account_name) {
+        Write-Host "Environment '$env_arg' not found in th.config.json" -ForegroundColor Red
+        return
+    }
+
+    Clear-Host
+    create_header "AWS Login"
+    
+    $role_value = switch ($env_arg) {
+        "dev" { "dev" }
+        "corepg" { "coreplayground" }
+        default { $env_arg }
+    }
+    
+    if ($sudo_flag -eq "s") {
+        $role_name = "sudo_$role_value"
+    } else {
+        $role_name = $role_value
+    }
+    
+    Write-Host "Logging you into: " -NoNewLine
+    Write-Host $account_name -ForegroundColor Green -NoNewLine
+    Write-Host " as " -NoNewLine
+    Write-Host $role_name -ForegroundColor Green
+    
+    tsh apps logout *>$null 2>&1
+    tsh apps login $account_name --aws-role $role_name *>$null 2>&1
+    
+    Write-Host "`nLogged in successfully!" -ForegroundColor Green
+    create_proxy $account_name
+}
+
+
+function create_proxy($app) {
+    # If no app provided, get active app
+    if (-not $app) {
+        $app = & tsh apps ls -f text | ForEach-Object {
+            if ($_ -match '^>\s+(\S+)') { $matches[1] }
+        }
     }
 
     if (-not $app) {
@@ -268,40 +314,62 @@ function create_proxy {
     Write-Host
 }
 
-function raise_request {
-    param (
-        [string]$App
-    )
-    Write-Host "`nEnter request reason: " -ForegroundColor White -NoNewLine
-    $reason = Read-Host 
-    switch ($App) {
-        "yl-production" {
-            Write-Host "`nAccess request sent for sudo_prod." -ForegroundColor Green
-            $rawOutputLines = @()
-            tsh request create --roles sudo_prod_role  --reason "$reason" |
-                Tee-Object -Variable rawOutputLines |
-                ForEach-Object { Write-Host $_ }
+function aws_elevated_login($app, $defaultRole) {
+    Clear-Host
+    create_header "Privilege Request"
+    Write-Host "`nNo privileged roles found. Your only available role is: " -NoNewLine
+    Write-Host $defaultRole -ForegroundColor Green
+    while ($true) {
+        Write-Host "`nWould you like to raise a privilege request?"
+        create_note "Entering (n) will log you in as prod"
+        $request = Read-Host "(y/n)"
+        $request = $request.Trim()
+        if ($request -match '^[Yy]$') {
+            Write-Host "`nEnter request reason: " -ForegroundColor White -NoNewLine
+            $reason = Read-Host 
+            switch ($app) {
+                "yl-production" {
+                    Write-Host "`nAccess request sent for sudo_prod." -ForegroundColor Green
+                    $rawOutputLines = @()
+                    tsh request create --roles sudo_prod_role  --reason "$reason" |
+                        Tee-Object -Variable rawOutputLines |
+                        ForEach-Object { Write-Host $_ }
 
-            # Join the lines back into a single string (for parsing)
-            $rawOutput = $rawOutputLines -join "`n"
+                    # Join the lines back into a single string (for parsing)
+                    $rawOutput = $rawOutputLines -join "`n"
 
-            # Extract the Request ID
-            $env:REQUEST_ID = ($rawOutput -split "`n" | Where-Object { $_ -match '^Request ID' }) -replace 'Request ID:\s*', '' | ForEach-Object { $_.Trim() }
-            $env:reauth_aws = "TRUE"
+                    # Extract the Request ID
+                    $env:REQUEST_ID = ($rawOutput -split "`n" | Where-Object { $_ -match '^Request ID' }) -replace 'Request ID:\s*', '' | ForEach-Object { $_.Trim() }
+                    $env:reauth_aws = "TRUE"
+                }
+                "yl-usproduction" {
+                    Write-Host "`nAccess request sent for sudo_usprod." -ForegroundColor Green
+                    $rawOutputLines = @()
+                    tsh request create --roles sudo_usprod_role --reason "$reason" |
+                        Tee-Object -Variable rawOutputLines |
+                        ForEach-Object { Write-Host $_ }
+
+                    # Join the lines back into a single string (for parsing)
+                    $rawOutput = $rawOutputLines -join "`n"
+
+                    # Extract the Request ID
+                    $env:REQUEST_ID = ($rawOutput -split "`n" | Where-Object { $_ -match '^Request ID' }) -replace 'Request ID:\s*', '' | ForEach-Object { $_.Trim() }
+                    $env:reauth_aws = "TRUE"
+                }
+            }
         }
-        "yl-usproduction" {
-            Write-Host "`nAccess request sent for sudo_usprod." -ForegroundColor Green
-            $rawOutputLines = @()
-            tsh request create --roles sudo_usprod_role --reason "$reason" |
-                Tee-Object -Variable rawOutputLines |
-                ForEach-Object { Write-Host $_ }
-
-            # Join the lines back into a single string (for parsing)
-            $rawOutput = $rawOutputLines -join "`n"
-
-            # Extract the Request ID
-            $env:REQUEST_ID = ($rawOutput -split "`n" | Where-Object { $_ -match '^Request ID' }) -replace 'Request ID:\s*', '' | ForEach-Object { $_.Trim() }
-            $env:reauth_aws = "TRUE"
+        elseif ($request -match '^[Nn]$') {
+            Write-Host "`nLogging you into " -ForegroundColor White -NoNewLine
+            Write-Host $app -ForegroundColor Green -NoNewLine
+            Write-Host " as " -ForegroundColor White -NoNewLine
+            Write-Host $defaultRole -ForegroundColor Green
+            tsh apps login $app --aws-role $defaultRole *>$null
+            Write-Host "`nLogged in successfully!" -ForegroundColor Green
+            create_proxy
+            return
+        }
+        else {
+            Write-Host "Invalid input. Please enter Y or N." -ForegroundColor Red
         }
     }
 }

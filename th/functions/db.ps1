@@ -1,6 +1,163 @@
 # ============================================================
 # ======================== Databases =========================
 # ============================================================
+function db_login {
+    th_login
+    Clear-Host
+    create_header "DB"
+
+    Write-Host "Which database would you like to connect to: "
+    Write-Host "`n1. " -NoNewLine
+    Write-Host "RDS" -ForegroundColor White
+    Write-Host "2. " -NoNewLine
+    Write-Host "MongoDB" -ForegroundColor White
+    $script:exit_db
+    $selected_db = ""
+
+    while ($true) {
+        Write-Host "`nEnter choice: " -NoNewLine
+        $choice = Read-Host 
+        if ($choice -eq "1") {
+            # RDS
+            Write-Host "`nSelected: " -NoNewLine
+            Write-Host "RDS" -ForegroundColor White
+
+            $db_type = "rds"
+
+            Clear-Host
+            create_header "Available Databases"
+
+            # Run both RDS login check and database listing in parallel
+            $results = load -Jobs @{
+                login_check = { check_rds_login }
+                databases = { 
+                    $json_output = tsh db ls --format=json | ConvertFrom-Json
+                    return $json_output | Where-Object { $_.metadata.labels.db_type -eq "rds" }
+                }
+            } -Message "Checking RDS access..."
+
+            $login_results = $results.login_check
+            $filtered_dbs = $results.databases
+            
+            # Print results
+            for ($i = 0; $i -lt $login_results.databases.Count; $i++) {
+                $status = $login_results.statuses[$i]
+                switch ($status) {
+                    "ok"    { Write-Host ("{0,2}. {1}" -f ($i + 1), $login_results.databases[$i]) }
+                    "fail"  { Write-Host ("{0,2}. {1}" -f ($i + 1), $login_results.databases[$i]) -ForegroundColor DarkGray }
+                    default { Write-Host ("{0,2}. {1}" -f ($i + 1), $login_results.databases[$i]) }
+                }
+            }
+
+            # Prompt for selection
+            Write-Host "`nSelect database (number): " -ForegroundColor White -NoNewLine
+            $db_number = Read-Host
+
+            while (-not $selected_db) {
+                $index = [int]$db_number - 1
+                if ($index -ge 0 -and $index -lt $filtered_dbs.Count) {
+                    $selected_db = $filtered_dbs[$index]
+                    
+                    # Check if the selected database has failed login status
+                    $selected_status = if ($index -lt $login_results.statuses.Count) { $login_results.statuses[$index] } else { "n/a" }
+                    if ($selected_status -eq "fail") {
+                        db_elevated_login "sudo_teleport_rds_read_role" $selected_db.metadata.name
+                    }
+                } else {
+                    Write-Host "`nInvalid selection" -ForegroundColor Red
+                    Write-Host "`nSelect database (number): " -ForegroundColor White -NoNewLine
+                    $db_number = Read-Host
+                }
+            }
+            break
+        }
+        # MongoDB
+        elseif ($choice -eq "2") {
+            Write-Host "`nSelected: " -NoNewLine
+            Write-Host "MongoDB" -ForegroundColor White
+            $db_type = "mongo"
+
+            Clear-Host
+            create_header "Available Databases"
+
+            # Run both database listing and access check in parallel
+            $results = load -Jobs @{
+                databases = { 
+                    $json_output = tsh db ls --format=json | ConvertFrom-Json
+                    return $json_output | Where-Object { $_.metadata.labels.db_type -ne "rds" }
+                }
+                access = { 
+                    $tshStatus = tsh status
+                    return $tshStatus -match '\batlas-can-read\b'
+                }
+            } -Message "Checking MongoDB access..."
+
+            $filtered_dbs = $results.databases
+            $hasAtlasAccess = $results.access
+
+            # If no MongoDB databases are listed, prompt for elevated login
+            if (-not $filtered_dbs) {
+                db_elevated_login "atlas-read-only" "MongoDBs"
+                break
+            }
+
+            $i = 1
+            foreach ($db in $filtered_dbs) {
+                Write-Host ("{0}. " -f $i) -NoNewLine
+                if ($hasAtlasAccess) {
+                    Write-Host $db.metadata.name -ForegroundColor White
+                } else {
+                    Write-Host $db.metadata.name -ForegroundColor DarkGray
+                }
+                $i++
+            }
+
+            # Prompt for selection
+            Write-Host "`nSelect database (number): " -ForegroundColor White -NoNewLine
+            $db_number = Read-Host
+
+            while (-not $selected_db) {
+                $index = [int]$db_number - 1
+                if ($index -ge 0 -and $index -lt $filtered_dbs.Count) {
+                    $selected_db = $filtered_dbs[$index]
+                    
+                    # If user doesn't have atlas access, trigger elevated login
+                    if (-not $hasAtlasAccess) {
+                        db_elevated_login "atlas-read-only" $selected_db.metadata.name
+                    }
+                } else {
+                    Write-Host "`nInvalid selection" -ForegroundColor Red
+                    Write-Host "`nSelect database (number): " -ForegroundColor White -NoNewLine
+                    $db_number = Read-Host
+                }
+            }
+            break
+        }
+        else {
+            Write-Host "`nInvalid selection. Please choose 1 or 2." -ForegroundColor Red
+        }
+    }
+    # Re-Authenticate following an access request
+    if ($script:reauth_db -eq "TRUE") {
+        Write-Host "`nRe-Authenticating`n" -ForegroundColor White
+        tsh logout
+        tsh login --auth=ad --proxy=youlend.teleport.sh:443 --request-id="$script:REQUEST_ID" *> $null
+        $script:reauth_db = "FALSE"
+    }
+
+    # Exit script if user chose not to raise an access request 
+    if ($script:exit_db -eq "TRUE") {
+        $script:exit_db = "FALSE"
+        return
+    }
+
+    if ($selected_db.metadata.labels.db_type -eq "rds") {
+        rds_connect $selected_db.metadata.name
+        return
+    }
+    mongo_connect $selected_db.metadata.name
+}
+
 function check_rds_login {
     $output = tsh db ls --format=json
     $dbs = ($output | ConvertFrom-Json) | Where-Object { $_.metadata.labels.db_type -eq "rds" } | Select-Object -ExpandProperty metadata | Select-Object -ExpandProperty name
@@ -79,135 +236,12 @@ function check_rds_login {
     }
 }
 
-function db_login {
-    th_login
-    Clear-Host
-    create_header "DB"
-    Write-Host "Which database would you like to connect to: "
-    Write-Host "`n1. " -NoNewLine
-    Write-Host "RDS" -ForegroundColor White
-    Write-Host "2. " -NoNewLine
-    Write-Host "MongoDB" -ForegroundColor White
-    $script:exit_db
-    while ($true) {
-        Write-Host "`nEnter choice: " -NoNewLine
-        $choice = Read-Host 
-        if ($choice -eq "1") {
-            # User selected RDS
-            Write-Host "`nSelected: " -NoNewLine
-            Write-Host "RDS" -ForegroundColor White
-            $db_type = "rds"
-            break
-        }
-        elseif ($choice -eq "2") {
-            Write-Host "`nSelected: " -NoNewLine
-            Write-Host "MongoDB" -ForegroundColor White
-            $db_type = "mongo"
-
-            # Get the list of databases
-            $output = tsh db ls --format=json | ConvertFrom-Json
-
-            # Filter for non-RDS (MongoDB) databases
-            $dbs = $output | Where-Object { $_.metadata.labels.db_type -ne "rds" }
-
-            # If no MongoDB databases are listed, prompt for elevated login
-            if (-not $dbs) {
-                Clear-Host
-                create_header "Privilege Request"
-                Write-Host "You don't have access to any databases..." -ForegroundColor White
-                Write-Host "`nWould you like to raise a request? (y/n): " -ForegroundColor White -NoNewLine
-                $elevated = Read-Host
-                if ($elevated -match '^[Yy]$') {
-                    db_elevated_login "atlas-read-only"
-                    break
-                }
-                if ($elevated -match '^[Nn]$') {
-                    return
-                }
-                break
-            }
-            break
-        }
-        else {
-            Write-Host "`nInvalid selection. Please choose 1 or 2." -ForegroundColor Red
-        }
-    }
-    if ($script:reauth_db -eq "TRUE") {
-        Write-Host "`nRe-Authenticating`n" -ForegroundColor White
-        tsh logout
-        tsh login --auth=ad --proxy=youlend.teleport.sh:443 --request-id="$script:REQUEST_ID" *> $null
-        $script:reauth_db = "FALSE"
-    }
-
-    if ($script:exit_db -eq "TRUE") {
-        $script:exit_db = "FALSE"
-        return
-    }
-
-    # Fetch and parse JSON output from tsh
-    $json_output = tsh db ls --format=json | ConvertFrom-Json
-
-    # Clear screen and show header
-    Clear-Host
-    create_header "Available Databases"
-
-    if ($db_type -eq "rds") {
-        $results = load -Job { check_rds_login } -Message "Checking cluster access..."
-        
-        # Print results
-        for ($i = 0; $i -lt $results.databases.Count; $i++) {
-            $status = $results.statuses[$i]
-            switch ($status) {
-                "ok"    { Write-Host ("{0,2}. {1}" -f ($i + 1), $results.databases[$i]) }
-                "fail"  { Write-Host ("{0,2}. {1}" -f ($i + 1), $results.databases[$i]) -ForegroundColor DarkGray }
-                default { Write-Host ("{0,2}. {1}" -f ($i + 1), $results.databases[$i]) }
-            }
-        }
-        $filtered = $json_output | Where-Object { $_.metadata.labels.db_type -eq "rds" }
-    } else {
-        $filtered = $json_output | Where-Object { $_.metadata.labels.db_type -ne "rds" }
-        $i = 1
-        foreach ($db in $filtered) {
-            Write-Host ("{0}. {1}" -f $i, $db.metadata.name) -ForegroundColor White
-            $i++
-        }
-    }
-
-    # Prompt for selection
-    Write-Host "`nSelect database (number): " -ForegroundColor White -NoNewLine
-    $db_choice = Read-Host
-
-    while (-not $chosen_db) {
-        $index = [int]$db_choice - 1
-        if ($index -ge 0 -and $index -lt $filtered.Count) {
-            $chosen_db = $filtered[$index]
-        } else {
-            Write-Host "`nInvalid selection" -ForegroundColor Red
-            Write-Host "`nSelect database (number): " -ForegroundColor White -NoNewLine
-            $db_choice = Read-Host
-        }
-    }
-
-    # Extract database name
-    $db = $chosen_db.metadata.name
-
-    if (-not $db) {
-        Write-Host "`nInvalid selection" -ForegroundColor Red
-        return
-    }
-
-    if ($chosen_db.metadata.labels.db_type -eq "rds") {
-        rds_connect $db
-        return
-    }
-    mongo_connect $db
-}
-
-function db_elevated_login($role = "atlas-read-only") {
+function db_elevated_login($role, $db) {
     while ($true) {
         Clear-Host
         create_header "Privilege Request"
-        Write-Host "You don't have access to any databases..." -ForegroundColor White
+        Write-Host "You don't have access to " -NoNewLine
+        Write-Host "$db..." -ForegroundColor White
         Write-Host "`nWould you like to raise a request? (y/n): " -ForegroundColor White -NoNewLine
         $elevated = Read-Host
         
@@ -238,55 +272,6 @@ function db_elevated_login($role = "atlas-read-only") {
         else {
             Write-Host "`nInvalid input. Please enter y or n." -ForegroundColor Red
         }
-    }
-}
-
-function open_dbeaver($rds, $db_user, $database) {
-    Write-Host "`nConnecting to " -NoNewLine
-    Write-Host "$database " -NoNewLine -ForegroundColor Green
-    Write-Host "in " -NoNewLine
-    Write-Host "$rds " -NoNewLine -ForegroundColor Green
-    Write-Host "as " -NoNewLine 
-    Write-Host "$db_user" -ForegroundColor Green
-    Start-Sleep -Seconds 2
-    Clear-Host
-    Start-Process powershell -ArgumentList @(
-        "-NoExit",
-        "-ExecutionPolicy", "Bypass",
-        "-WindowStyle", "Minimized",
-        "-Command", "tsh proxy db `"$rds`" --db-name=`"$database`" --port=50000 --tunnel --db-user=$db_user"
-    )
-    create_header "DBeaver"
-    Write-Host "To connect to the database, follow these steps:`n"
-    Write-Host "1. Once DBeaver opens click create a new connection in the very top left."
-    Write-Host "2. Select " -NoNewLine
-    Write-Host "PostgreSQL " -NoNewLine -ForegroundColor White
-    Write-Host "as the database type."
-    Write-Host "3. Use the following connection details:"
-    Write-Host " - Host:      " -NoNewLine
-    Write-Host "localhost" -ForegroundColor White
-    Write-Host " - Port:      " -NoNewLine
-    Write-Host "50000" -ForegroundColor White
-    Write-Host " - Database:  " -NoNewLine
-    Write-Host "$database" -ForegroundColor White
-    Write-Host " - User:      " -NoNewLine
-    Write-Host "$db_user" -ForegroundColor White
-    Write-Host " - Password:  " -NoNewLine
-    Write-Host "(leave blank)`n" -ForegroundColor White
-    Write-Host "4. Optionally, select show all databases."
-    Write-Host "5. Click 'Test Connection' to ensure everything is set up correctly."
-    Write-Host "6. If the test is successful, click 'Finish' to save the connection."
-    for ($i = 3; $i -ge 1; $i--) {
-        Write-Host ". " -ForegroundColor Green -NoNewline
-        Start-Sleep -Seconds 1
-    }
-    Write-Host "`n`nOpening DBeaver`n"
-    $proc = Get-Process -Name "dbeaver" -ErrorAction SilentlyContinue
-    if ($proc) {
-        Add-Type '[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr hWnd);' -Name Win -Namespace Win32
-        [Win32.Win]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
-    } else {
-        Start-Process "C:\Program Files\DBeaver\dbeaver.exe"
     }
 }
 
@@ -400,7 +385,7 @@ function rds_connect($rds) {
         $result = load -Job { fetch_postgres_dbs $using:rds } -Message "Fetching databases..."
 
         if (-not $result.success) {
-            Write-Host "`n❌ $($result.error)" -ForegroundColor Red
+            Write-Host "`n $($result.error)" -ForegroundColor Red
             return
         }
 
@@ -454,14 +439,14 @@ function rds_connect($rds) {
     }
 }
 
-function mongo_connect($db) {
+function mongo_connect($selected_db) {
 
-    $db_user = switch ($db) {
+    $db_user = switch ($selected_db) {
         "mongodb-YLUSProd-Cluster-1" { "teleport-usprod" }
         "mongodb-YLProd-Cluster-1"   { "teleport-prod" }
         "mongodb-YLSandbox-Cluster-1" { "teleport-sandbox" }
         default {
-            Write-Host "`n`e[31mUnknown database: $db`e[0m"
+            Write-Host "`n`e[31mUnknown database: $selected_db`e[0m"
             return
         }
     }
@@ -493,15 +478,15 @@ function mongo_connect($db) {
                     return
                 }
                 
-                tsh db connect $db --db-user=$db_user --db-name=admin
+                tsh db connect $selected_db --db-user=$db_user --db-name=admin
                 return
             }
             "2" {
                 Clear-Host
                 create_header "AtlasGUI"
                 Write-Host "Logging into:" -NoNewLine
-                Write-Host " $db" -ForegroundColor Green 
-                tsh db login $db --db-user=$db_user --db-name=admin | Out-Null
+                Write-Host " $selected_db" -ForegroundColor Green 
+                tsh db login $selected_db --db-user=$db_user --db-name=admin | Out-Null
 
                 Write-Host "`nCreating proxy..."
 
@@ -519,7 +504,7 @@ function mongo_connect($db) {
                     "-NoExit",
                     "-ExecutionPolicy", "Bypass",
                     "-WindowStyle", "Minimized",
-                    "-Command", "tsh proxy db --tunnel --port=$port $db"
+                    "-Command", "tsh proxy db --tunnel --port=$port $selected_db"
                 )
                 Write-Host "`nOpening MongoDB Compass...`n"
                 Start-Job { Start-Process "mongodb://localhost:$using:port/?directConnection=true" } *>$null
@@ -529,5 +514,54 @@ function mongo_connect($db) {
                 Write-Host "`nInvalid selection. Please enter 1 or 2."
             }
         }
+    }
+}
+
+function open_dbeaver($rds, $db_user, $database) {
+    Write-Host "`nConnecting to " -NoNewLine
+    Write-Host "$database " -NoNewLine -ForegroundColor Green
+    Write-Host "in " -NoNewLine
+    Write-Host "$rds " -NoNewLine -ForegroundColor Green
+    Write-Host "as " -NoNewLine 
+    Write-Host "$db_user" -ForegroundColor Green
+    Start-Sleep -Seconds 2
+    Clear-Host
+    Start-Process powershell -ArgumentList @(
+        "-NoExit",
+        "-ExecutionPolicy", "Bypass",
+        "-WindowStyle", "Minimized",
+        "-Command", "tsh proxy db `"$rds`" --db-name=`"$database`" --port=50000 --tunnel --db-user=$db_user"
+    )
+    create_header "DBeaver"
+    Write-Host "To connect to the database, follow these steps:`n"
+    Write-Host "1. Once DBeaver opens click create a new connection in the very top left."
+    Write-Host "2. Select " -NoNewLine
+    Write-Host "PostgreSQL " -NoNewLine -ForegroundColor White
+    Write-Host "as the database type."
+    Write-Host "3. Use the following connection details:"
+    Write-Host " - Host:      " -NoNewLine
+    Write-Host "localhost" -ForegroundColor White
+    Write-Host " - Port:      " -NoNewLine
+    Write-Host "50000" -ForegroundColor White
+    Write-Host " - Database:  " -NoNewLine
+    Write-Host "$database" -ForegroundColor White
+    Write-Host " - User:      " -NoNewLine
+    Write-Host "$db_user" -ForegroundColor White
+    Write-Host " - Password:  " -NoNewLine
+    Write-Host "(leave blank)`n" -ForegroundColor White
+    Write-Host "4. Optionally, select show all databases."
+    Write-Host "5. Click 'Test Connection' to ensure everything is set up correctly."
+    Write-Host "6. If the test is successful, click 'Finish' to save the connection."
+    for ($i = 3; $i -ge 1; $i--) {
+        Write-Host ". " -ForegroundColor Green -NoNewline
+        Start-Sleep -Seconds 1
+    }
+    Write-Host "`n`nOpening DBeaver`n"
+    $proc = Get-Process -Name "dbeaver" -ErrorAction SilentlyContinue
+    if ($proc) {
+        Add-Type '[DllImport("user32.dll")]public static extern bool SetForegroundWindow(IntPtr hWnd);' -Name Win -Namespace Win32
+        [Win32.Win]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
+    } else {
+        Start-Process "C:\Program Files\DBeaver\dbeaver.exe"
     }
 }
