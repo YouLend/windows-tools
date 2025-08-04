@@ -361,31 +361,34 @@ function print_help($Version) {
     create_header -HeaderText "Usage" -CenterSpaces $centerSpaces
 
     # Usage commands
-    Write-Host "$centerSpaces     ╚═ th kube       | k   : Kubernetes login." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th aws        | a   : AWS login." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th db         | d   : Log into our various databases." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th terra      | t   : Quick log-in to Terragrunt." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th logout     | l   : Clean up Teleport session." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th login      | li  : Simple log in to Teleport." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th kube [options] | k   : Kubernetes login." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th aws  [options] | a   : AWS login." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th db             | d   : Log into our various databases." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th terra          | t   : Quick log-in to Terragrunt." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th logout         | l   : Clean up Teleport session." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th login          | li  : Simple log in to Teleport." -ForegroundColor White
     
 
     # Divider line
     Write-Host "$centerSpaces     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" -ForegroundColor DarkGray
 
     # Note
-    Write-Host "$centerSpaces     For specific instructions, run th <option> -h"
+    Write-Host "$centerSpaces     For help, and " -NoNewLine
+    Write-host "[options] " -ForegroundColor White -NoNewLine 
+    Write-Host "info, run " -NoNewLine
+    Write-Host "th a/k/d etc.. -h" -ForegroundColor White
 
     # Docs section
     create_header -HeaderText "Docs" -CenterSpaces $centerSpaces
     Write-Host "$centerSpaces     Run the following commands to access the documentation pages:"
-    Write-Host "$centerSpaces     ╚═ Quickstart:   | th qs" -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ Docs:         | th doc" -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ Quickstart:       | th qs" -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ Docs:             | th doc" -ForegroundColor White
 
     # Extras section
     create_header -HeaderText "Extras" -CenterSpaces $centerSpaces
     Write-Host "$centerSpaces     Run the following commands to access the extra features:"
-    Write-Host "$centerSpaces     ╚═ th loader           : Run loader animation." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th animate [option] : Run logo animation." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th loader              : Run loader animation." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th animate [option]    : Run logo animation." -ForegroundColor White
     Write-Host "$centerSpaces        ╚═ yl" -ForegroundColor White
     Write-Host "$centerSpaces        ╚═ th" -ForegroundColor White
 
@@ -398,6 +401,60 @@ function print_help($Version) {
     Write-Host "▔▔▔▔▔▔▔▔▔▔▔▔▔" -ForegroundColor DarkGray -NoNewLine
 }
 
+function print_aws_help() {
+    Clear-Host
+    create_header "th aws | a"
+    Write-Host "Login to our AWS accounts.`n"
+    Write-Host "Usage: " -NoNewLine
+    Write-Host "th aws [options] | a" -ForegroundColor White
+    Write-Host " ╚═ " -NoNewLine
+    Write-Host "th a" -ForegroundColor White -NoNewLine
+    Write-Host "                    : Open interactive login."
+    Write-Host " ╚═ " -NoNewLine
+    Write-Host "th a <account> <s>" -ForegroundColor White -NoNewLine
+    Write-Host "      : Quick aws log-in, Where " -NoNewLine
+    Write-Host "<account>" -ForegroundColor White -NoNewLine
+    Write-Host "=dev, corepg etc.."
+    Write-Host "                              and " -NoNewLine
+    Write-Host "<s>" -ForegroundColor White -NoNewLine
+    Write-Host " is an optional arg which logs you in with"
+    Write-Host "                              the account's sudo role"
+    Write-Host "e.g:"
+    Write-Host " ╚═ " -NoNewLine
+    Write-Host "th a dev" -ForegroundColor White -BackgroundColor DarkGray -NoNewLine
+    Write-Host "                : logs you into " -NoNewLine
+    Write-Host "yl-development" -ForegroundColor Green -NoNewLine
+    Write-Host " as " -NoNewLine
+    Write-Host "dev" -ForegroundColor Green
+    Write-Host " ╚═ " -NoNewLine
+    Write-Host "th a dev s" -ForegroundColor White -BackgroundColor DarkGray -NoNewLine
+    Write-Host "              : logs you into " -NoNewLine
+    Write-Host "yl-development" -ForegroundColor Green -NoNewLine
+    Write-Host " as " -NoNewLine
+    Write-Host "sudo_dev`n" -ForegroundColor Green
+}
+
+function print_kube_help() {
+    Clear-Host
+    create_header "th kube | k"
+    Write-Host "Login to our Kubernetes clusters.`n"
+    Write-Host "Usage: " -NoNewLine
+    Write-Host "th kube [options] | k" -ForegroundColor White
+    Write-Host " ╚═ " -NoNewLine
+    Write-Host "th k" -ForegroundColor White -NoNewLine
+    Write-Host "                     : Open interactive login."
+    Write-Host " ╚═ " -NoNewLine
+    Write-Host "th k <account>" -ForegroundColor White -NoNewLine
+    Write-Host "           : Quick kube log-in, Where " -NoNewLine
+    Write-Host "<account>" -ForegroundColor White -NoNewLine
+    Write-Host "=dev, corepg etc..`n"
+    Write-Host "e.g:"
+    Write-Host " ╚═ " -NoNewLine
+    Write-Host "th k dev" -ForegroundColor White -BackgroundColor DarkGray -NoNewLine
+    Write-Host "                 : logs you into " -NoNewLine
+    Write-Host "aslive-dev-eks-blue" -ForegroundColor Green -NoNewLine
+    Write-Host ".`n"
+}
 function demo_wave_loader {
     param (
         [string]$Message = "Demo Wave Loader"

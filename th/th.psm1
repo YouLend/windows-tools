@@ -1,6 +1,6 @@
 # Load all function files
 $moduleRoot = $PSScriptRoot
-$version = "1.4.7"
+$version = "1.4.9"
 Get-ChildItem -Path "$moduleRoot/functions" -Filter *.ps1 | ForEach-Object {
     . $_.FullName
 }
@@ -16,9 +16,9 @@ function th {
     switch ($Command) {
 		{ $_ -in @("kube", "k") } {
 			if ($SubArgs[0] -eq "-h") {
-			Write-Output "Interactive login for our K8s Clusters."
+				print_kube_help
 			} else {
-			kube_login @SubArgs
+				kube_login @SubArgs
 			}
 		}
 		{ $_ -in @("terra", "t") } {
@@ -30,9 +30,9 @@ function th {
 		}
 		{ $_ -in @("aws", "a") } {
 			if ($SubArgs[0] -eq "-h") {
-			Write-Output "Interactive login for our AWS accounts."
+				print_aws_help
 			} else {
-			aws_login @SubArgs
+				aws_login @SubArgs
 			}
 		}
 		{ $_ -in @("db", "d") } {
