@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>th</id>
+    <version>1.5.0</version>
+    <owners>Nikolai Main</owners>
+    <title>TH - Teleport Helper</title>
+    <authors>YourName</authors>
+    <copyright>2024 Nikolai Main</copyright>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <tags>teleport kubernetes aws database cli powershell</tags>
+    <summary>PowerShell CLI tool for managing Teleport connections to Kubernetes, AWS, and databases</summary>
+    <description><![CDATA[
+TH (Teleport Helper) is a comprehensive PowerShell CLI tool designed to streamline interactions with Teleport for accessing:
+
+- **Kubernetes clusters** with quick login and privilege escalation
+- **AWS accounts** with role-based access and sudo capabilities  
+- **Databases (RDS & MongoDB)** with access checking and elevated permissions
+- **Terraform/Terragrunt** environments
+
+## Features
+- Interactive and quick login modes
+- Automatic access checking and privilege escalation
+- JSON-based configuration for easy environment management
+- Beautiful CLI interface with loading animations
+- Parallel job execution for faster operations
+
+## Usage
+- `th k dev` - Quick Kubernetes login
+- `th a prod s` - AWS login with sudo role
+- `th d` - Interactive database selection
+- `th -h` - Full help and documentation
+
+Requires Teleport CLI (tsh) to be installed and configured.
+]]></description>
+  </metadata>
+  <files>
+    <file src="..\th\**" target="tools\th" />
+    <file src="tools\chocolateyinstall.ps1" target="tools" />
+    <file src="tools\chocolateyuninstall.ps1" target="tools" />
+  </files>
+</package>

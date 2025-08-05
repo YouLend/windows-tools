@@ -1,6 +1,6 @@
 # Load all function files
 $moduleRoot = $PSScriptRoot
-$version = "1.4.9"
+$version = "1.5.0"
 Get-ChildItem -Path "$moduleRoot/functions" -Filter *.ps1 | ForEach-Object {
     . $_.FullName
 }
