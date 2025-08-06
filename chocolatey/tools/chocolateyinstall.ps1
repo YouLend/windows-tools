@@ -6,38 +6,23 @@ $moduleDir = Join-Path $toolsDir 'th'
 
 Write-Host "Installing TH (Teleport Helper)..." -ForegroundColor Green
 
-# Get PowerShell module paths - check both PowerShell Core and Windows PowerShell
-$userModulePath = $env:PSModulePath -split ';' | Where-Object { $_ -like "*$env:USERNAME*" } | Select-Object -First 1
-
-if (-not $userModulePath) {
-    # Try different possible module paths
-    $possiblePaths = @(
-        (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Modules'),
-        (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules')
-    )
-    
-    # Use the first path that exists in PSModulePath, or create the Windows PowerShell one
-    foreach ($path in $possiblePaths) {
-        if ($env:PSModulePath -like "*$path*") {
-            $userModulePath = $path
-            break
-        }
-    }
-    
-    # Default to Windows PowerShell modules if nothing found
-    if (-not $userModulePath) {
-        $userModulePath = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
-    }
-}
-
-$installPath = Join-Path $userModulePath 'th'
+# Use system-wide PowerShell modules to avoid OneDrive conflicts
+$systemModulePath = Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'
+$installPath = Join-Path $systemModulePath 'th'
 
 Write-Host "Module will be installed to: $installPath" -ForegroundColor Cyan
 
-# Create directory if it doesn't exist
-if (-not (Test-Path $userModulePath)) {
-    Write-Host "Creating module directory: $userModulePath" -ForegroundColor Yellow
-    New-Item -ItemType Directory -Path $userModulePath -Force | Out-Null
+# Create system module directory if it doesn't exist
+if (-not (Test-Path $systemModulePath)) {
+    Write-Host "Creating system module directory: $systemModulePath" -ForegroundColor Yellow
+    try {
+        New-Item -ItemType Directory -Path $systemModulePath -Force -ErrorAction Stop | Out-Null
+        Write-Host "Successfully created directory: $systemModulePath" -ForegroundColor Green
+    } catch {
+        Write-Error "Failed to create system directory: $systemModulePath. Error: $($_.Exception.Message)"
+        Write-Error "Make sure you're running as Administrator"
+        throw
+    }
 }
 
 # Remove existing installation
