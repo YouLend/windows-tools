@@ -2,13 +2,20 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>th</id>
-    <version>1.5.0</version>
+    <version>1.6.0</version>
+    <packageSourceUrl>https://github.com/YouLend/windows-tools</packageSourceUrl>
     <owners>Nikolai Main</owners>
     <title>TH - Teleport Helper</title>
-    <authors>YourName</authors>
+    <authors>Nikolai Main</authors>
+    <projectUrl>https://github.com/YouLend/windows-tools</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/YouLend/windows-tools/main/th/icon.png</iconUrl>
     <copyright>2024 Nikolai Main</copyright>
+    <licenseUrl>https://github.com/YouLend/windows-tools/blob/main/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <tags>teleport kubernetes aws database cli powershell</tags>
+    <projectSourceUrl>https://github.com/YouLend/windows-tools</projectSourceUrl>
+    <docsUrl>https://github.com/YouLend/windows-tools/blob/main/README.md</docsUrl>
+    <bugTrackerUrl>https://github.com/YouLend/windows-tools/issues</bugTrackerUrl>
+    <tags>teleport kubernetes aws database cli powershell admin</tags>
     <summary>PowerShell CLI tool for managing Teleport connections to Kubernetes, AWS, and databases</summary>
     <description><![CDATA[
 TH (Teleport Helper) is a comprehensive PowerShell CLI tool designed to streamline interactions with Teleport for accessing:
@@ -35,8 +42,8 @@ Requires Teleport CLI (tsh) to be installed and configured.
 ]]></description>
   </metadata>
   <files>
-    <file src="..\th\**" target="tools\th" />
     <file src="tools\chocolateyinstall.ps1" target="tools" />
     <file src="tools\chocolateyuninstall.ps1" target="tools" />
+    <file src="tools\VERIFICATION.txt" target="tools" />
   </files>
 </package>

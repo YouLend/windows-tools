@@ -1,0 +1,148 @@
+{
+  "kube": {
+    "admin": {
+      "cluster": "headquarter-admin-eks-green",
+      "request_role": ""
+    },
+    "dev": {
+      "cluster": "aslive-dev-eks-blue",
+      "request_role": ""
+    },
+    "prod": {
+      "cluster": "live-prod-eks-blue",
+      "request_role": "production-eks-clusters"
+    },
+    "uprod": {
+      "cluster": "live-usprod-eks-blue",
+      "request_role": "sudo_teleport_kube_write_role"
+    },
+    "sb": {
+      "cluster": "aslive-sandbox-eks-blue",
+      "request_role": "production-eks-clusters"
+    },
+    "stag": {
+      "cluster": "aslive-staging-eks-blue",
+      "request_role": ""
+    },
+    "ustag": {
+      "cluster": "aslive-usstaging-eks-blue",
+      "request_role": ""
+    }
+  },
+  "aws": {
+    "admin": {
+      "account": "yl-admin",
+      "role": "admin"
+    },
+    "cpg": {
+      "account": "yl-coreplayground",
+      "role": "coreplayground"
+    },
+    "cpgb": {
+      "account": "yl-corepgblue",
+      "role": "corepgblue"
+    },
+    "cpgg": {
+      "account": "yl-corepggreen",
+      "role": "corepggreen"
+    },
+    "cpgh": {
+      "account": "yl-corepghub",
+      "role": "corepghub"
+    },
+    "dev": {
+      "account": "yl-development",
+      "role": "dev"
+    },
+    "ddev": {
+      "account": "yl-datadev",
+      "role": "datadev"
+    },
+    "dprod": {
+      "account": "yl-dataprod",
+      "role": "dataprod"
+    },
+    "dpg": {
+      "account": "yl-dataplayground",
+      "role": "dataplayground"
+    },
+    "dstag": {
+      "account": "yl-datastaging",
+      "role": "datastaging"
+    },
+    "prod": {
+      "account": "yl-production",
+      "role": "prod"
+    },
+    "uprod": {
+      "account": "yl-usproduction",
+      "role": "usprod"
+    },
+    "sb": {
+      "account": "yl-sandbox",
+      "role": "sandbox"
+    },
+    "stag": {
+      "account": "yl-staging",
+      "role": "staging"
+    },
+    "ustag": {
+      "account": "yl-usstaging",
+      "role": "usstaging"
+    }
+  },
+  "db":{
+    "rds": {
+      "cpg": {
+        "database": "platform-corepg-aurora-postgres-1",
+        "request_role": ""
+      },
+      "dev": {
+        "database": "db-dev-aurora-postgres-1",
+        "request_role": ""
+      },
+      "prod": {
+        "database": "live-prod-view-aurora-postgres-1",
+        "request_role": "sudo_teleport_rds_read_role"
+      },
+      "uprod": {
+        "database": "live-usprod-view-aurora-postgres-1",
+        "request_role": "sudo_teleport_rds_read_role"
+      },
+      "prodb": {
+        "database": "live-prod-bi-aurora-postgres-2",
+        "request_role": "sudo_teleport_rds_read_role"
+      },
+      "uprodb": {
+        "database": "live-usprod-bi-aurora-postgres-2",
+        "request_role": "sudo_teleport_rds_read_role"
+      },
+      "sb": {
+        "database": "db-sandbox-aurora-postgres-1",
+        "request_role": ""
+      },
+      "stag": {
+        "database": "db-staging-aurora-postgres-1",
+        "request_role": ""
+      },
+      "ustag": {
+        "database": "db-usstaging-aurora-postgres-1",
+        "request_role": ""
+      }
+    },
+    "mongo": {
+      "prod": {
+        "database": "mongodb-YLProd-Cluster-1",
+        "request_role": "atlas-read-only"
+      },
+      "uprod": {
+        "database": "mongodb-YLProd-Cluster-1",
+        "request_role": "atlas-read-only"
+      },
+      "sb": {
+        "database": "mongodb-YLSandbox-Cluster-1",
+        "request_role": "atlas-read-only"
+      }
+    }
+  }
+}

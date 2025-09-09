@@ -2,9 +2,20 @@ $ErrorActionPreference = 'Stop'
 
 $packageName = 'th'
 $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
-$moduleDir = Join-Path $toolsDir 'th'
 
-Write-Host "Installing TH (Teleport Helper)..." -ForegroundColor Green
+# Download from GitHub releases
+$version = $env:ChocolateyPackageVersion
+$releaseUrl = "https://github.com/YouLend/windows-tools/releases/download/th-v$version/th-$version.zip"
+$downloadPath = Join-Path $toolsDir "th-$version.zip"
+
+Write-Host "Installing TH (Teleport Helper) v$version..." -ForegroundColor Green
+Write-Host "Downloading from: $releaseUrl" -ForegroundColor Cyan
+
+# Download and extract
+Get-ChocolateyWebFile -PackageName $packageName -FileFullPath $downloadPath -Url $releaseUrl
+Get-ChocolateyUnzip -FileFullPath $downloadPath -Destination $toolsDir
+
+$moduleDir = Join-Path $toolsDir 'th'
 
 # Use system-wide PowerShell modules to avoid OneDrive conflicts
 $systemModulePath = Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'
@@ -35,16 +46,11 @@ if (Test-Path $installPath) {
 Write-Host "Copying module files to: $installPath" -ForegroundColor Cyan
 Copy-Item -Path $moduleDir -Destination $installPath -Recurse -Force
 
-# Copy config file from the th module directory
-$configDestination = Join-Path $installPath 'th.config.json'
-$configSource = Join-Path $moduleDir 'config.json'
+# Cleanup download files
+Remove-Item -Path $downloadPath -Force -ErrorAction SilentlyContinue
+Remove-Item -Path $moduleDir -Recurse -Force -ErrorAction SilentlyContinue
 
-if (Test-Path $configSource) {
-    Copy-Item -Path $configSource -Destination $configDestination -Force
-    Write-Host "Configuration file installed." -ForegroundColor Green
-} else {
-    Write-Host "No configuration file found at $configSource" -ForegroundColor Yellow
-}
+# Config file is already included in the module structure at config/th.config.json
 
 # Create a batch file wrapper for global access
 $binPath = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'th\bin'
