@@ -11,14 +11,11 @@ Package can be verified like this:
 
 2. Download the same release version as noted in this package's nuspec
 
-   https://github.com/YouLend/windows-tools/releases/download/th-v1.6.0/th-1.6.0.zip
+   https://github.com/YouLend/windows-tools/releases/download/1.6.0/th-1.6.0.zip
 
 3. You can use one of the following methods to obtain the SHA256 checksum:
    - Use powershell function 'Get-FileHash'
    - Use Chocolatey utility 'checksum.exe'
 
    checksum type: sha256
-   checksum: [TO BE CALCULATED WHEN RELEASE IS CREATED]
-
-File 'th-1.6.0.zip' is obtained from GitHub:
-   https://github.com/YouLend/windows-tools/releases/download/th-v1.6.0/th-1.6.0.zip
+   checksum: 076c04000789db0a1ea5b44276992113ac0570d05b6d407ca81e66f3d4eef999
