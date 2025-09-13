@@ -201,8 +201,7 @@ function th_login {
     Write-Host "`nLogging you into Teleport..."
     
     # Start login in background
-    #Start-Process tsh -ArgumentList 'login', '--auth=ad', '--proxy=youlend.teleport.sh:443' -WindowStyle Hidden
-    tsh login --user=yl.teleport.test@gmail.com --proxy=youlend.teleport.sh:443
+    Start-Process tsh -ArgumentList 'login', '--auth=ad', '--proxy=youlend.teleport.sh:443' -WindowStyle Hidden
 
     # Wait up to 15 seconds (30 x 0.5s) for login to complete
     for ($i = 0; $i -lt 60; $i++) {

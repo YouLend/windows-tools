@@ -9,17 +9,52 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $moduleName = "th"
+$indent = "  "
+function create_header {
+    param (
+        [string]$HeaderText,
+        [string]$indent
+    )
 
-Write-Host "🚀 TH (Teleport Helper) Remote Installer" -ForegroundColor Cyan
-Write-Host "=========================================" -ForegroundColor Cyan
+    $headerLength = $HeaderText.Length
+    $totalDashCount = 52
+    $availableDashCount = $totalDashCount - ($headerLength - 5)
+
+    if ($availableDashCount -lt 2) {
+        $availableDashCount = 2
+    }
+
+    $leftDashes = [math]::Floor($availableDashCount / 2)
+    $rightDashes = $availableDashCount - $leftDashes
+
+    $leftDashStr = ('━' * $leftDashes)
+    $rightDashStr = ('━' * $rightDashes)
+
+    # Top border
+    Write-Host ""
+    Write-Host "$indent" -NoNewline
+    Write-Host "    ▄███████▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀████████▀" -ForegroundColor DarkGray
+    Write-Host "$indent" -NoNewline
+    Write-Host "  $leftDashStr " -NoNewLine
+    Write-Host "$HeaderText" -NoNewLine -ForegroundColor White
+    Write-Host " $rightDashStr" -ForegroundColor White
+    Write-Host "$indent" -NoNewline
+    Write-Host "▄███████████▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄███████▀" -ForegroundColor DarkGray
+    Write-Host ""
+}
+
+# Create header
+Clear-Host
+create_header "🚀 TH (Teleport Helper) Installer" $indent
 
 # Get latest version if not specified
 if ($Version -eq "latest") {
-    Write-Host "📡 Fetching latest version from GitHub..." -ForegroundColor Yellow
+    Write-Host "$indent📡 Fetching latest version from GitHub...`n" 
     try {
         $response = Invoke-RestMethod -Uri "https://api.github.com/repos/YouLend/windows-tools/releases/latest"
         $Version = $response.tag_name -replace '^(th-)?v?', ''
-        Write-Host "✅ Latest version found: $Version" -ForegroundColor Green
+        Write-Host "$indent✅ Latest version found: " -NoNewLine
+        Write-Host "$Version`n" -ForegroundColor Green
     } catch {
         Write-Error "❌ Failed to fetch latest version: $($_.Exception.Message)"
     }
@@ -32,43 +67,63 @@ if ($isAdmin) {
     # System-wide installation (requires admin)
     $systemModulePath = Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'
     $installPath = Join-Path $systemModulePath $moduleName
-    Write-Host "📦 Installing system-wide to: $installPath" -ForegroundColor Cyan
-
     # Create system module directory if it doesn't exist
     if (-not (Test-Path $systemModulePath)) {
-        Write-Host "📂 Creating system module directory..." -ForegroundColor Yellow
+        Write-Host "$indent📂 Creating system module directory..." -ForegroundColor Yellow
         New-Item -ItemType Directory -Path $systemModulePath -Force | Out-Null
     }
-} else {
-    # User-specific installation
-    $userModulePath = Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'WindowsPowerShell\Modules'
-    $installPath = Join-Path $userModulePath $moduleName
-    Write-Host "📦 Installing for current user to: $installPath" -ForegroundColor Cyan
 
-    # Create user module directory if it doesn't exist
-    if (-not (Test-Path $userModulePath)) {
-        Write-Host "📂 Creating user module directory..." -ForegroundColor Yellow
-        New-Item -ItemType Directory -Path $userModulePath -Force | Out-Null
-    }
-}
+# Initialize flag to track if we should skip main installation
+$skipMainInstall = $false
 
 # Check for existing installation
-if (Test-Path $installPath) {
-    if (-not $Force) {
-        Write-Host "⚠️  TH is already installed at: $installPath" -ForegroundColor Yellow
-        $response = Read-Host "Overwrite existing installation? (y/N)"
-        if ($response -ne 'y' -and $response -ne 'Y') {
-            Write-Host "❌ Installation cancelled." -ForegroundColor Red
-            exit 0
+    if (Test-Path $installPath) {
+        if (-not $Force) {
+            Write-Host "$indent⚠️ TH is already installed at: " -NoNewLine
+            Write-Host "$installPath`n" -ForegroundColor Yellow
+
+            do {
+                Write-Host "${indent}Overwrite existing installation? (y/N): " -NoNewLine
+                $response = Read-Host
+
+                if ($response -notin @("y", "Y", "n", "N", "")) {
+                    Write-Host "$indent❌ Invalid choice. Please enter y for Yes or n/Enter for No." -ForegroundColor Red
+                }
+            } while ($response -notin @("y", "Y", "n", "N", ""))
+
+            if ($response -ne 'y' -and $response -ne 'Y') {
+                Write-Host "$indent⚠️  Skipping TH installation - proceeding to dependency check..." -ForegroundColor Yellow
+                # Set a flag to skip the main installation but continue to dependencies
+                $skipMainInstall = $true
+            } else {
+                Write-Host "`n$indent🗑️ Removing existing installation..."
+                Remove-Item -Path $installPath -Recurse -Force
+            }
+        } else {
+            # Force flag is set, remove without asking
+            Write-Host "`n$indent🗑️ Removing existing installation..."
+            Remove-Item -Path $installPath -Recurse -Force
         }
+    } else {
+        Write-Host "$indent📦 Installing system-wide to: " -NoNewLine 
+        Write-Host "$installPath" -ForegroundColor Cyan
     }
-    Write-Host "🗑️  Removing existing installation..." -ForegroundColor Yellow
-    Remove-Item -Path $installPath -Recurse -Force
+
+} else {
+    # User-specific installation
+    Write-Host "$indent❌ Not running shell as Admin. Re-open powershell as Administrator to install.`n" -ForegroundColor Red
+    return
 }
 
-# Download and extract
-Write-Host "⬇️  Downloading TH v$Version from GitHub..." -ForegroundColor Cyan
-$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "th_install_$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
+
+# Download and extract (only if not skipping main install)
+if (-not $skipMainInstall) {
+    Clear-Host
+    create_header "🚀 TH (Teleport Helper) Installer" $indent
+    Write-Host "$indent⬇️ Downloading TH v " -NoNewLine
+    Write-host "$Version" -NoNewLine -ForegroundColor Green
+    Write-Host " from GitHub..."
+    $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "th_install_$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
 try {
@@ -79,7 +134,8 @@ try {
     $webClient = New-Object System.Net.WebClient
     $webClient.DownloadFile($downloadUrl, $zipPath)
 
-    Write-Host "📦 Extracting files..." -ForegroundColor Cyan
+    Write-Host "$indent📦" -NoNewLine -ForegroundColor Cyan
+    Write-Host " Extracting files..."
     Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
 
     $repoPath = Join-Path $tempDir "windows-tools-th-v$Version\th"
@@ -88,7 +144,8 @@ try {
     }
 
     # Install module files
-    Write-Host "📋 Installing module files..." -ForegroundColor Cyan
+    Write-Host "$indent📋" -NoNewLine -ForegroundColor Cyan
+    Write-Host " Installing module files..."
     Copy-Item -Path $repoPath -Destination $installPath -Recurse -Force
 
     # Create version cache
@@ -111,7 +168,8 @@ INSTALL_METHOD: curl
 }
 
 # Create batch wrapper for global access
-Write-Host "🔧 Setting up global command..." -ForegroundColor Cyan
+Write-Host "$indent🔧" -ForegroundColor Cyan -NoNewLine
+Write-Host " Setting up global command..."
 $binPath = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'th\bin'
 if (-not (Test-Path $binPath)) {
     New-Item -ItemType Directory -Path $binPath -Force | Out-Null
@@ -130,33 +188,151 @@ $currentPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
 if ($currentPath -notlike "*$binPath*") {
     $newPath = if ($currentPath) { "$currentPath;$binPath" } else { $binPath }
     [Environment]::SetEnvironmentVariable('PATH', $newPath, 'User')
-    Write-Host "🔗 Added to PATH: $binPath" -ForegroundColor Green
+    Write-Host "`n$indent🔗" -NoNewLine -ForegroundColor Green
+    Write-Host "Added to PATH"
+}
 }
 
-# Success message
-Write-Host ""
-Write-Host "🎉 SUCCESS! TH (Teleport Helper) v$Version installed!" -ForegroundColor Green
-Write-Host "==========================================" -ForegroundColor Green
-Write-Host ""
-Write-Host "📍 Installation Details:" -ForegroundColor White
-Write-Host "   📁 Module: $installPath" -ForegroundColor Gray
-Write-Host "   🔧 Command: th (available globally)" -ForegroundColor Gray
-Write-Host "   💾 Version: $Version" -ForegroundColor Gray
-Write-Host ""
-Write-Host "🚀 Quick Start:" -ForegroundColor White
-Write-Host "   th          - Show all commands" -ForegroundColor Gray
-Write-Host "   th k -h     - Kubernetes help" -ForegroundColor Gray
-Write-Host "   th a -h     - AWS help" -ForegroundColor Gray
-Write-Host "   th d -h     - Database help" -ForegroundColor Gray
-Write-Host "   th u        - Check for updates" -ForegroundColor Gray
-Write-Host ""
-Write-Host "⚠️  Note: Restart PowerShell if 'th' command is not recognized." -ForegroundColor Yellow
-Write-Host ""
+# Function to install auto-installable dependencies
+function Install-Dependency {
+    param($Dependency)
+
+    Write-Host "$indent📥" -NoNewLine -ForegroundColor Cyan
+    Write-Host " Installing " -NoNewLine
+    Write-Host "$($Dependency.Name)" -ForegroundColor Green -NoNewLine
+    Write-Host "..."
+
+    try {
+        # Create install directory
+        if (-not (Test-Path $Dependency.InstallPath)) {
+            New-Item -ItemType Directory -Path $Dependency.InstallPath -Force | Out-Null
+        }
+
+        switch ($Dependency.Command) {
+            "kubectl" {
+                $kubectlPath = Join-Path $Dependency.InstallPath $Dependency.ExecutableName
+                Invoke-WebRequest -Uri $Dependency.Url -OutFile $kubectlPath
+                Add-ToPath $Dependency.InstallPath
+                Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green 
+                Write-Host " kubectl installed successfully"
+            }
+            "psql" {
+                $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "psql_install"
+                New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+                $zipPath = Join-Path $tempDir "psql.zip"
+                Invoke-WebRequest -Uri $Dependency.Url -OutFile $zipPath
+
+                Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+
+                # Find the PostgreSQL installation folder in extracted files
+                $psqlFolder = Get-ChildItem -Path $tempDir -Directory -Recurse | Where-Object { $_.Name -match "pgsql|postgresql" } | Select-Object -First 1
+                if ($psqlFolder) {
+                    # Copy entire PostgreSQL folder to Program Files
+                    $targetPath = "C:\Program Files\PostgreSQL"
+                    if (Test-Path $targetPath) {
+                        Remove-Item -Path $targetPath -Recurse -Force
+                    }
+                    Copy-Item -Path $psqlFolder.FullName -Destination $targetPath -Recurse -Force
+
+                    # Add bin directory to PATH
+                    $binPath = Join-Path $targetPath "bin"
+                    if (Test-Path $binPath) {
+                        Add-ToPath $binPath
+                    }
+                    Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green
+                    Write-Host " PostgreSQL installed successfully"
+                } else {
+                    throw "PostgreSQL folder not found in archive"
+                }
+
+                Remove-Item -Path $tempDir -Recurse -Force
+            }
+            "mongosh" {
+                $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "mongosh_install"
+                New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+                $zipPath = Join-Path $tempDir "mongosh.zip"
+                Invoke-WebRequest -Uri $Dependency.Url -OutFile $zipPath
+
+                Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+
+                # Find mongosh.exe in extracted files
+                $mongoshExe = Get-ChildItem -Path $tempDir -Name "mongosh.exe" -Recurse | Select-Object -First 1
+                if ($mongoshExe) {
+                    $mongoshPath = Join-Path $tempDir $mongoshExe
+                    Copy-Item -Path $mongoshPath -Destination (Join-Path $Dependency.InstallPath $Dependency.ExecutableName) -Force
+                    Add-ToPath $Dependency.InstallPath
+                    Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green 
+                    Write-Host " mongosh installed successfully"
+                } else {
+                    throw "mongosh.exe not found in archive"
+                }
+
+                Remove-Item -Path $tempDir -Recurse -Force
+            }
+            "mongodb-compass" {
+                $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "compass_install"
+                New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+                $msiPath = Join-Path $tempDir "mongodb-compass.msi"
+                Invoke-WebRequest -Uri $Dependency.Url -OutFile $msiPath
+
+                # Install MSI silently
+                Write-Host "`n$indent🔧 Running MongoDB Compass MSI installer..." -ForegroundColor Cyan
+                $installArgs = "/i `"$msiPath`" /quiet /norestart"
+                $installProcess = Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -Wait -PassThru
+
+                if ($installProcess.ExitCode -eq 0) {
+                    Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green
+                    Write-Host " MongoDB Compass installed successfully"
+                } else {
+                    throw "MongoDB Compass MSI installer failed with exit code: $($installProcess.ExitCode)"
+                }
+
+                Remove-Item -Path $tempDir -Recurse -Force
+            }
+            "dbeaver" {
+                $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "dbeaver_install"
+                New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+
+                $zipPath = Join-Path $tempDir "dbeaver.zip"
+                Invoke-WebRequest -Uri $Dependency.Url -OutFile $zipPath
+
+                Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+
+                # Find the DBeaver application folder
+                $dbeaverFolder = Get-ChildItem -Path $tempDir -Directory | Select-Object -First 1
+                if ($dbeaverFolder -and (Test-Path (Join-Path $dbeaverFolder.FullName "dbeaver.exe"))) {
+                    # Remove existing installation if it exists
+                    if (Test-Path $Dependency.InstallPath) {
+                        Remove-Item -Path $Dependency.InstallPath -Recurse -Force
+                    }
+
+                    # Copy entire DBeaver folder to Program Files
+                    Copy-Item -Path $dbeaverFolder.FullName -Destination $Dependency.InstallPath -Recurse -Force
+
+                    Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green
+                    Write-Host " DBeaver installed successfully"
+                } else {
+                    throw "DBeaver application folder not found in archive"
+                }
+
+                Remove-Item -Path $tempDir -Recurse -Force
+            }
+        }
+    } catch {
+        Write-Host "`n$indent❌ Failed to install $($Dependency.Name): $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "`n$indent   Manual installation: $($Dependency.Url)" -ForegroundColor Yellow
+    }
+}
 
 # Dependency Management
 if (-not $SkipDependencies) {
-    Write-Host "🔍 Checking dependencies..." -ForegroundColor Cyan
-    Write-Host "============================" -ForegroundColor Cyan
+    Clear-Host
+    create_header "🚀 TH (Teleport Helper) Installer" $indent
+    Write-Host "$indent🔍" -NoNewLine -ForegroundColor Cyan
+    Write-Host " Checking dependencies...`n" 
 
     # Function to check if command exists
     function Test-Command {
@@ -180,29 +356,57 @@ if (-not $SkipDependencies) {
         }
     }
 
+    # Helper function to add directory to PATH
+    function Add-ToPath {
+        param([string]$Directory)
+
+        $currentPath = [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+        if ($currentPath -notlike "*$Directory*") {
+            $newPath = if ($currentPath) { "$currentPath;$Directory" } else { $Directory }
+            [Environment]::SetEnvironmentVariable('PATH', $newPath, 'Machine')
+            Write-Host "`n$indent🔗" -NoNewLine -ForegroundColor Green
+            Write-Host " Added to PATH"
+        }
+    }
+
     # Function to download and install tsh
     function Install-Tsh {
-        Write-Host "📥 Installing tsh (Teleport CLI)..." -ForegroundColor Cyan
+        $tshInstallDir = "C:\Program Files\tsh"
+        $tshExePath = Join-Path $tshInstallDir 'tsh.exe'
 
-        $release = Get-LatestGitHubRelease "gravitational/teleport"
-        if (-not $release) {
-            Write-Host "❌ Failed to get latest tsh release" -ForegroundColor Red
-            return $false
+        # Check if tsh is already installed in target directory
+        if (Test-Path $tshExePath) {
+            Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green
+            Write-Host " tsh already installed at: $tshExePath"
+            # Make sure it's in PATH
+            Add-ToPath $tshInstallDir
+            return $true
         }
 
-        # Find Windows AMD64 asset
-        $asset = $release.assets | Where-Object { $_.name -like "*windows-amd64*" -and $_.name -like "*.zip" } | Select-Object -First 1
-        if (-not $asset) {
-            Write-Host "❌ Windows tsh binary not found in release" -ForegroundColor Red
-            return $false
+        # Get latest version from GitHub releases
+        $teleportVersion = $null
+        try {
+            $response = Invoke-RestMethod -Uri "https://api.github.com/repos/gravitational/teleport/releases/latest"
+            $teleportVersion = $response.tag_name -replace '^v?', ''
+        } catch {
+            Write-Host "$indent⚠️  Failed to fetch latest version, using fallback version 18.1.8" -ForegroundColor Yellow
+            $teleportVersion = "18.1.8"
         }
+
+        Write-Host "`n$indent📥" -NoNewLine -ForegroundColor Cyan
+        Write-Host " Installing tsh version " -NoNewLine
+        Write-Host "$teleportVersion" -ForegroundColor Green -NoNewLine
+        Write-Host " (Teleport CLI)...`n"
+        # Construct download URL for Windows AMD64
+        $downloadUrl = "https://cdn.teleport.dev/teleport-v$teleportVersion-windows-amd64-bin.zip"
 
         try {
             $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "tsh_install"
             New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
             $zipPath = Join-Path $tempDir "tsh.zip"
-            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
+            Write-Host "$indent📥 Downloading from: $downloadUrl" -ForegroundColor Gray
+            Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath
 
             Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
 
@@ -213,32 +417,50 @@ if (-not $SkipDependencies) {
             }
 
             $tshPath = Join-Path $tempDir $tshExe
-            $binDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'th\bin'
-            Copy-Item -Path $tshPath -Destination (Join-Path $binDir 'tsh.exe') -Force
+            $tshInstallDir = "C:\Program Files\tsh"
+            if (-not (Test-Path $tshInstallDir)) {
+                New-Item -ItemType Directory -Path $tshInstallDir -Force | Out-Null
+            }
+            Copy-Item -Path $tshPath -Destination (Join-Path $tshInstallDir 'tsh.exe') -Force
 
             Remove-Item -Path $tempDir -Recurse -Force
-            Write-Host "✅ tsh installed successfully" -ForegroundColor Green
+            Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green
+            Write-Host " tsh installed successfully"
+            
+            Add-ToPath $tshInstallDir
             return $true
         } catch {
-            Write-Host "❌ Failed to install tsh: $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "$indent❌ Failed to install tsh: $($_.Exception.Message)" -ForegroundColor Red
             return $false
         }
     }
 
     # Check mandatory dependency: tsh
-    if (-not (Test-Command "tsh")) {
-        Write-Host "❌ tsh (Teleport CLI) is required but not installed" -ForegroundColor Red
-        Write-Host "   tsh is mandatory for TH to function" -ForegroundColor Yellow
-        $installTsh = Read-Host "Install tsh automatically? (Y/n)"
+    if (-not (Test-Command "th")) {
+        Write-Host "$indent❌ tsh (Teleport CLI) is required but not installed" -ForegroundColor Red
+
+        do {
+            Write-Host "`n${indent}Would you like to install tsh now? (Y/n): " -NoNewLine
+            $installTsh = Read-Host
+
+            if ($installTsh -notin @("y", "Y", "n", "N", "")) {
+                Write-Host "$indent❌ Invalid choice. Please enter y/Enter for Yes or n for No." -ForegroundColor Red
+            }
+        } while ($installTsh -notin @("y", "Y", "n", "N", ""))
+
         if ($installTsh -ne 'n' -and $installTsh -ne 'N') {
             if (-not (Install-Tsh)) {
-                Write-Host "⚠️  You'll need to install tsh manually from: https://github.com/gravitational/teleport/releases" -ForegroundColor Yellow
+                Write-Host "$indent⚠️  You'll need to install tsh manually from: https://github.com/gravitational/teleport/releases" -ForegroundColor Yellow
             }
         } else {
-            Write-Host "⚠️  TH will not work without tsh. Install from: https://github.com/gravitational/teleport/releases" -ForegroundColor Yellow
+            Write-Host "$indent⚠️  TH will not work without tsh. Install from: https://github.com/gravitational/teleport/releases" -ForegroundColor Yellow
         }
     } else {
-        Write-Host "✅ tsh found" -ForegroundColor Green
+        # Check if it's installed in our managed location and ensure PATH is set
+        $tshInstallDir = "C:\Program Files\tsh"
+        if (Test-Path (Join-Path $tshInstallDir 'tsh.exe')) {
+            Add-ToPath $tshInstallDir
+        }
     }
 
     # Define optional dependencies
@@ -247,134 +469,195 @@ if (-not $SkipDependencies) {
             Command = "psql"
             Name = "PostgreSQL CLI (psql)"
             Description = "Required for PostgreSQL database connections"
-            Impact = "Cannot connect to PostgreSQL databases"
-            Url = "https://sbp.enterprisedb.com/getfile.jsp?fileid=1259681"
-            AutoInstall = $false  # Manual download required
+            Url = "https://sbp.enterprisedb.com/getfile.jsp?fileid=1259681&_gl=1*1usqs8e*_gcl_au*MTYxODMyMzkzOC4xNzU3Nzc3Njc3*_ga*R0ExLjEuMTMyMzY3MjE3Mi4xNzU3Nzc3Njc5*_ga_ND3EP1ME7G*czE3NTc3Nzc2NzgkbzEkZzEkdDE3NTc3ODE4NTYkajYwJGwwJGgxODY1ODEyNDEz"
+            AutoInstall = $true
+            InstallPath = "C:\Program Files\PostgreSQL\bin"
+            ExecutableName = "psql.exe"
         },
         @{
             Command = "kubectl"
             Name = "Kubernetes CLI (kubectl)"
-            Description = "Required for Kubernetes cluster management"
-            Impact = "Cannot manage Kubernetes clusters"
+            Description = "Required for kubernetes connections (th k) to function correctly."
             Url = "https://dl.k8s.io/release/v1.34.0/bin/windows/amd64/kubectl.exe"
             AutoInstall = $true
+            InstallPath = "C:\Program Files\kubectl"
+            ExecutableName = "kubectl.exe"
         },
         @{
             Command = "mongosh"
-            Name = "MongoDB Shell"
-            Description = "Required for MongoDB database connections"
-            Impact = "Cannot connect to MongoDB databases"
+            Name = "MongoDB Shell (mongosh)"
+            Description = "Required for mongodb connections to function correctly"
             Url = "https://downloads.mongodb.com/compass/mongosh-2.5.8-win32-x64.zip"
             AutoInstall = $true
+            InstallPath = "C:\Program Files\mongosh"
+            ExecutableName = "mongosh.exe"
+        },
+        @{
+            Command = "mongodb-compass"
+            Name = "MongoDB Compass"
+            Description = "Required for connecting to MongoDB databases via GUI"
+            Url = "https://downloads.mongodb.com/compass/mongodb-compass-1.46.10-win32-x64.msi"
+            AutoInstall = $true
+            InstallPath = "C:\Program Files\MongoDB\MongoDB Compass"
+            ExecutableName = "MongoDBCompass.exe"
+            IsGUI = $true
+        },
+        @{
+            Command = "dbeaver"
+            Name = "DBeaver"
+            Description = "Required for connecting to RDS databases via GUI"
+            Url = "https://dbeaver.io/files/dbeaver-ce-latest-win32.win32.x86_64.zip"
+            AutoInstall = $true
+            InstallPath = "C:\Program Files\DBeaver"
+            ExecutableName = "dbeaver.exe"
+            IsGUI = $true
         }
     )
 
     # Check optional dependencies
     $missingDeps = @()
     foreach ($dep in $optionalDeps) {
-        if (Test-Command $dep.Command) {
-            Write-Host "✅ $($dep.Name) found" -ForegroundColor Green
+        $isInstalled = $false
+
+        if ($dep.IsGUI) {
+            # For GUI apps, check multiple locations and registry
+            $exePath = Join-Path $dep.InstallPath $dep.ExecutableName
+            $isInstalled = Test-Path $exePath
+
+            # Also check registry for installed programs if not found at expected path
+            if (-not $isInstalled) {
+                $registryPaths = @(
+                    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+                    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+                )
+
+                foreach ($regPath in $registryPaths) {
+                    try {
+                        $programs = Get-ItemProperty $regPath -ErrorAction SilentlyContinue |
+                                   Where-Object { $_.DisplayName -like "*$($dep.Name.Split(' ')[0])*" }
+                        if ($programs) {
+                            $isInstalled = $true
+                            break
+                        }
+                    } catch {
+                        # Ignore registry access errors
+                    }
+                }
+            }
         } else {
-            Write-Host "❌ $($dep.Name) not found" -ForegroundColor Yellow
+            # For CLI apps, check if command is available
+            $isInstalled = Test-Command $dep.Command
+        }
+
+        if (-not $isInstalled) {
             $missingDeps += $dep
         }
     }
 
-    # Prompt for optional dependencies
+    # Prompt for optional dependencies individually
     if ($missingDeps.Count -gt 0) {
-        Write-Host ""
-        Write-Host "📋 Missing Optional Dependencies:" -ForegroundColor Yellow
-        Write-Host "=================================" -ForegroundColor Yellow
+        Clear-Host
+        create_header "🚀 TH (Teleport Helper) Installer" $indent
+        Write-Host "$indent📋 Found $($missingDeps.Count) missing dependencies`n" -ForegroundColor Yellow
 
-        for ($i = 0; $i -lt $missingDeps.Count; $i++) {
-            $dep = $missingDeps[$i]
-            Write-Host "$($i + 1). $($dep.Name)" -ForegroundColor White
-            Write-Host "   📝 $($dep.Description)" -ForegroundColor Gray
-            Write-Host "   ⚠️  Without this: $($dep.Impact)" -ForegroundColor Red
-            Write-Host ""
+        # Show all missing dependencies
+        foreach ($dep in $missingDeps) {
+            Write-Host "$indent• $($dep.Name)" -ForegroundColor White
         }
 
-        Write-Host "Install options:" -ForegroundColor Cyan
-        Write-Host "A - Install all auto-installable dependencies" -ForegroundColor White
-        Write-Host "S - Show manual installation links" -ForegroundColor White
-        Write-Host "N - Skip dependency installation" -ForegroundColor White
+        Write-Host "`n${indent}Install options:" -ForegroundColor Cyan
+        Write-Host "${indent}A - Install all auto-installable dependencies" -ForegroundColor White
+        Write-Host "${indent}I - Install dependencies individually" -ForegroundColor White
+        Write-Host "${indent}N - Skip dependency installation" -ForegroundColor White
 
-        $choice = Read-Host "Choose option (A/S/N)"
+        do {
+            Write-Host "`n${indent}Choose option (A/I/N): " -NoNewLine
+            $installChoice = Read-Host
 
-        switch ($choice.ToUpper()) {
+            if ($installChoice.ToUpper() -notin @("A", "I", "N")) {
+                Write-Host "$indent❌ Invalid choice. Please enter A, I, or N." -ForegroundColor Red
+            }
+        } while ($installChoice.ToUpper() -notin @("A", "I", "N"))
+
+        switch ($installChoice.ToUpper()) {
             "A" {
-                Write-Host "📥 Installing auto-installable dependencies..." -ForegroundColor Cyan
                 foreach ($dep in $missingDeps | Where-Object { $_.AutoInstall }) {
+                    Clear-Host
+                    create_header "🚀 TH (Teleport Helper) Installer" $indent
+                    Write-Host "$indent📥" -NoNewLine -ForegroundColor Cyan
+                    Write-Host " Installing dependencies...`n"
                     Install-Dependency $dep
                 }
 
                 # Show manual links for non-auto deps
                 $manualDeps = $missingDeps | Where-Object { -not $_.AutoInstall }
                 if ($manualDeps.Count -gt 0) {
-                    Write-Host ""
-                    Write-Host "📝 Manual installation required:" -ForegroundColor Yellow
+                    Write-Host "`n$indent📝 Manual installation required:" -ForegroundColor Yellow
                     foreach ($dep in $manualDeps) {
-                        Write-Host "• $($dep.Name): $($dep.Url)" -ForegroundColor White
+                        Write-Host "$indent• $($dep.Name): $($dep.Url)" -ForegroundColor White
                     }
                 }
             }
-            "S" {
-                Write-Host ""
-                Write-Host "📝 Manual installation links:" -ForegroundColor Cyan
+            "I" {
                 foreach ($dep in $missingDeps) {
-                    Write-Host "• $($dep.Name): $($dep.Url)" -ForegroundColor White
+                    Clear-Host
+                    create_header "🚀 TH (Teleport Helper) Installer" $indent
+                    Write-Host "$indent📋 Going through dependencies individually...`n" -ForegroundColor Yellow
+
+                    Write-Host "$indent❌ $($dep.Name) not found" -ForegroundColor Red
+                    Write-Host "`n$indent📝 $($dep.Description)" -ForegroundColor Gray
+                    Write-Host ""
+
+                    if ($dep.AutoInstall) {
+                        do {
+                            Write-Host "${indent}Install " -NoNewLine
+                            Write-Host "$($dep.Name)" -NoNewLine -ForegroundColor White
+                            Write-Host " now? (Y/n): " -NoNewLine
+                            $choice = Read-Host
+
+                            if ($choice -notin @("y", "Y", "n", "N", "")) {
+                                Write-Host "$indent❌ Invalid choice. Please enter y/Enter for Yes or n for No." -ForegroundColor Red
+                            }
+                        } while ($choice -notin @("y", "Y", "n", "N", ""))
+
+                        if ($choice -ne 'n' -and $choice -ne 'N') {
+                            Clear-Host
+                            create_header "🚀 TH (Teleport Helper) Installer" $indent
+                            Install-Dependency $dep
+                        } else {
+                            Write-Host "$indent⚠️  Skipped $($dep.Name)" -ForegroundColor Yellow
+                        }
+                    } else {
+                        Write-Host "$indent📝 Manual installation required: $($dep.Url)" -ForegroundColor Yellow
+                        Write-Host "${indent}Press Enter to continue..." -NoNewLine
+                        Read-Host
+                        }
+                        Write-Host ""
                 }
             }
             "N" {
-                Write-Host "⚠️  Skipping dependency installation" -ForegroundColor Yellow
+                Write-Host "$indent⚠️  Skipping all dependency installations" -ForegroundColor Yellow
             }
         }
     } else {
-        Write-Host "✅ All dependencies are available!" -ForegroundColor Green
+        Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green
+        Write-Host " All dependencies are installed!"
     }
 }
 
-# Function to install auto-installable dependencies
-function Install-Dependency {
-    param($Dependency)
-
-    Write-Host "📥 Installing $($Dependency.Name)..." -ForegroundColor Cyan
-
-    try {
-        $binDir = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'th\bin'
-
-        switch ($Dependency.Command) {
-            "kubectl" {
-                $kubectlPath = Join-Path $binDir 'kubectl.exe'
-                Invoke-WebRequest -Uri $Dependency.Url -OutFile $kubectlPath
-                Write-Host "✅ kubectl installed successfully" -ForegroundColor Green
-            }
-            "mongosh" {
-                $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "mongosh_install"
-                New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
-
-                $zipPath = Join-Path $tempDir "mongosh.zip"
-                Invoke-WebRequest -Uri $Dependency.Url -OutFile $zipPath
-
-                Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
-
-                # Find mongosh.exe in extracted files
-                $mongoshExe = Get-ChildItem -Path $tempDir -Name "mongosh.exe" -Recurse | Select-Object -First 1
-                if ($mongoshExe) {
-                    $mongoshPath = Join-Path $tempDir $mongoshExe
-                    Copy-Item -Path $mongoshPath -Destination (Join-Path $binDir 'mongosh.exe') -Force
-                    Write-Host "✅ mongosh installed successfully" -ForegroundColor Green
-                } else {
-                    throw "mongosh.exe not found in archive"
-                }
-
-                Remove-Item -Path $tempDir -Recurse -Force
-            }
-        }
-    } catch {
-        Write-Host "❌ Failed to install $($Dependency.Name): $($_.Exception.Message)" -ForegroundColor Red
-        Write-Host "   Manual installation: $($Dependency.Url)" -ForegroundColor Yellow
-    }
-}
-
+# Success message
+Clear-Host
+create_header "🚀 TH (Teleport Helper) Installer" $indent
+Write-Host "$indent🎉" -NoNewLine -ForegroundColor Green
+Write-Host " TH (Teleport Helper) installed!"
+Write-Host ""
+Write-Host "$indent📍 Installation Details:" -ForegroundColor White
+Write-Host "$indent   📁 Module: $installPath" -ForegroundColor Gray
+Write-Host "$indent   🔧 Command: th (available globally)" -ForegroundColor Gray
+Write-Host "$indent   💾 Version: " -NoNewLine
+Write-Host "$Version" -ForegroundColor Green
+Write-Host ""
+Write-Host "$indent⚠️ Note: Restart PowerShell if 'th' command is not recognized." -ForegroundColor Yellow
+Write-Host "`n$indent📝 th also functions, And is formatted, better in a non-admin shell."
 Write-Host ""
