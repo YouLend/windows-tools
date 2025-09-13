@@ -217,8 +217,6 @@ STATUS:UP_TO_DATE
             # Ignore if can't set hidden attribute
         }
     }
-    
-    Write-Host "Version updated to $NewVersion" -ForegroundColor Green
 }
 
 # Function to download and install update from GitHub

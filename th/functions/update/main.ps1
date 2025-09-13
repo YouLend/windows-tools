@@ -136,8 +136,6 @@
             Write-Host ($indent + "✅ th updated successfully to version ") -NoNewLine
             Write-Host "$latest_version" -NoNewLine -ForegroundColor Green
             Write-Host "!`n"
-            Write-Host ($indent + "Current version: ") -NoNewLine
-            get_th_version
         } else {
             Write-Host ""
             Write-Host ($indent + "❌ Update failed. Please try again later.") -ForegroundColor Red
