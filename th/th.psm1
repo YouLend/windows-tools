@@ -102,8 +102,8 @@ function th {
 			}
 		}
 		{ $_ -in @("notifications", "n") } {
-			$changelog = get_changelog "1.6.4"
-			create_notification "$version" "1.6.4" $changelog
+			$changelog = get_changelog "1.6.6"
+			create_notification "$version" "1.6.6" $changelog
 		}
 		"" {
 			if (Get-Command less -ErrorAction SilentlyContinue) {

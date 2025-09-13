@@ -164,23 +164,9 @@ function show_update_notification {
                 $currentVersion = $parts[1].Trim()
                 $latestVersion = $parts[2].Trim()
 
-                # Get recent changes from git (if available) - quick check only
-                $changelog = ""
-                try {
-                    $scriptDir = Split-Path -Parent $PSScriptRoot
-                    if (Test-Path (Join-Path $scriptDir ".git")) {
-                        $gitPath = Get-Command git -ErrorAction SilentlyContinue
-                        if ($gitPath) {
-                            $gitOutput = git -C $scriptDir log --oneline -3 --pretty=format:"%s" 2>$null
-                            if ($gitOutput) {
-                                $changelog = $gitOutput -join "`n"
-                            }
-                        }
-                    }
-                } catch {
-                    # Ignore git errors
-                }
-                
+                # Get changelog from GitHub API
+                $changelog = get_changelog $latestVersion
+
                 create_notification $currentVersion $latestVersion $changelog
             }
         }
