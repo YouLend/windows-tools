@@ -1,6 +1,9 @@
 ﻿# TH (Teleport Helper) Remote Installer
 # Usage: curl -L https://raw.githubusercontent.com/YouLend/windows-tools/main/th/install.ps1 | powershell -
 
+# Fix Unicode display
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 param(
     [string]$Version = "latest",
     [switch]$Force,
@@ -120,11 +123,11 @@ $skipMainInstall = $false
 if (-not $skipMainInstall) {
     Clear-Host
     create_header "🚀 TH (Teleport Helper) Installer" $indent
-    Write-Host "$indent⬇️ Downloading TH v " -NoNewLine
+    Write-Host "$indent⬇️ Downloading th " -NoNewLine
     Write-host "$Version" -NoNewLine -ForegroundColor Green
     Write-Host " from GitHub..."
     $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "th_install_$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
-New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
 try {
     $downloadUrl = "https://github.com/YouLend/windows-tools/archive/refs/tags/th-v$Version.zip"
@@ -134,7 +137,7 @@ try {
     $webClient = New-Object System.Net.WebClient
     $webClient.DownloadFile($downloadUrl, $zipPath)
 
-    Write-Host "$indent📦" -NoNewLine -ForegroundColor Cyan
+    Write-Host "`n$indent📦" -NoNewLine -ForegroundColor Cyan
     Write-Host " Extracting files..."
     Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
 
@@ -144,7 +147,7 @@ try {
     }
 
     # Install module files
-    Write-Host "$indent📋" -NoNewLine -ForegroundColor Cyan
+    Write-Host "`n$indent📋" -NoNewLine -ForegroundColor Cyan
     Write-Host " Installing module files..."
     Copy-Item -Path $repoPath -Destination $installPath -Recurse -Force
 
@@ -168,7 +171,7 @@ INSTALL_METHOD: curl
 }
 
 # Create batch wrapper for global access
-Write-Host "$indent🔧" -ForegroundColor Cyan -NoNewLine
+Write-Host "`n$indent🔧" -ForegroundColor Cyan -NoNewLine
 Write-Host " Setting up global command..."
 $binPath = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'th\bin'
 if (-not (Test-Path $binPath)) {
