@@ -46,12 +46,12 @@ function create_header {
 }
 
 # Create header
-#Clear-Host
+Clear-Host
 create_header "🚀 TH (Teleport Helper) Installer" $indent
 
 # Get latest version if not specified
 if ($Version -eq "latest") {
-    Write-Host "$indent📡 Fetching latest version from GitHub...`n" 
+    Write-Host "$indent📡 Fetching latest version from GitHub...`n"
     try {
         $response = Invoke-RestMethod -Uri "https://api.github.com/repos/YouLend/windows-tools/releases/latest"
         $Version = $response.tag_name -replace '^(th-)?v?', ''
@@ -61,8 +61,6 @@ if ($Version -eq "latest") {
         Write-Error "❌ Failed to fetch latest version: $($_.Exception.Message)"
     }
 }
-
-exit 
 
 # Choose installation location based on admin privileges
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
