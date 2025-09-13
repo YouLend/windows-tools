@@ -62,7 +62,7 @@ if ($Version -eq "latest") {
     }
 }
 
-return 
+exit 
 
 # Choose installation location based on admin privileges
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
