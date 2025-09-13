@@ -1,6 +1,5 @@
 ﻿# TH (Teleport Helper) Remote Installer
-# Usage: curl -L https://raw.githubusercontent.com/YouLend/windows-tools/main/th/install.ps1 | powershell -
-
+# Usage:   iwr -useb https://raw.githubusercontent.com/YouLend/windows-tools/main/th/install.ps1 -OutFile "$env:TEMP\th-install.ps1"; & "$env:TEMP\th-install.ps1"; Remove-Item "$env:TEMP\th-install.ps1" -ErrorAction SilentlyContinue
 # Fix Unicode display
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
@@ -62,6 +61,8 @@ if ($Version -eq "latest") {
         Write-Error "❌ Failed to fetch latest version: $($_.Exception.Message)"
     }
 }
+
+return 
 
 # Choose installation location based on admin privileges
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
