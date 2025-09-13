@@ -98,35 +98,102 @@
     Write-Host ($indent + ([string][char]0x2580) * ($boxWidth - 2)) -ForegroundColor DarkGray
     Write-Host ($indent + ([string][char]0x2594) * ($boxWidth - 2))
 
+    # Track changelog line count for clearing later
+    $script:changelogRenderedLines = 0
+
     # If changelog is provided, add it below the notification box
     if ($Changelog) {
-        Write-Host ""
-        Write-Host ($indent + "Recent changes:") -ForegroundColor Cyan
-        # Display changelog entries as bullet points
+        
+        # First pass: find the longest changelog line
         $changelogLines = $Changelog -split "`r?`n"
+        $maxChangelogLen = 0
         foreach ($line in $changelogLines) {
             if ($line.Trim()) {
-                Write-Host ($indent + "• " + $line)
+                # Remove markdown dashes and convert to bullet
+                $cleanLine = $line -replace '^- ', ''
+                $changelogLine = "• $cleanLine"
+                $changelogLen = $changelogLine.Length
+                if ($changelogLen -gt $maxChangelogLen) {
+                    $maxChangelogLen = $changelogLen
+                }
             }
         }
+        
+        $padding = [Math]::Floor($boxWidth / 7)
+
+        $changelogSpaces = " " * $padding
+        
+        # Second pass: display all lines with wrapping
+        $maxLineWidth = $boxWidth - $changelogSpaces.Length - 4
+        foreach ($line in $changelogLines) {
+            if ($line.Trim()) {
+                # Remove markdown dashes and convert to bullet
+                $cleanLine = $line -replace '^- ', ''
+                $changelogLine = "• $cleanLine"
+                
+                # Wrap long lines preserving words
+                if ($changelogLine.Length -gt $maxLineWidth) {
+                    $remaining = $cleanLine
+                    $firstLine = $true
+                    while ($remaining.Length -gt 0) {
+                        if ($firstLine) {
+                            $prefix = "• "
+                            $available = $maxLineWidth - 2
+                            $firstLine = $false
+                        } else {
+                            $prefix = "  "
+                            $available = $maxLineWidth - 2
+                        }
+                        
+                        if ($remaining.Length -le $available) {
+                            Write-Host ($indent + $changelogSpaces + $prefix + $remaining)
+                            $script:changelogRenderedLines++
+                            break
+                        }
+                        
+                        # Find last space within available length
+                        $chunk = $remaining.Substring(0, $available)
+                        $lastSpaceIndex = $chunk.LastIndexOf(' ')
+                        if ($lastSpaceIndex -gt 0) {
+                            $chunk = $chunk.Substring(0, $lastSpaceIndex)
+                        }
+                        
+                        Write-Host ($indent + $changelogSpaces + $prefix + $chunk)
+                        $script:changelogRenderedLines++
+                        $remaining = $remaining.Substring($chunk.Length + 1)
+                    }
+                } else {
+                    Write-Host ($indent + $changelogSpaces + $changelogLine)
+                    $script:changelogRenderedLines++
+                }
+            }
+        }
+        Write-Host ""
+        $script:changelogRenderedLines++  # Count the blank line
     }
 
     $result = embedded_horizontal_menu $indent $boxWidth
     
     # Handle the update logic based on user selection
     if ($result -eq 0) {  # Yes selected
-        # Clear the menu lines first
+        # Clear the menu and changelog lines
         $console = $Host.UI.RawUI
         $currentPos = $console.CursorPosition
         
-        # Move cursor back and clear the menu area (3 lines: menu + blank + instructions)
-        for ($i = 0; $i -lt 3; $i++) {
+        # Calculate total lines to clear (menu + changelog)
+        $linesToClear = 3  # menu + blank + instructions
+        if ($Changelog) {
+            $linesToClear += $script:changelogRenderedLines
+        }
+        
+        # Move cursor back and clear all lines
+        for ($i = 0; $i -lt $linesToClear; $i++) {
             [Console]::SetCursorPosition(0, $currentPos.Y - $i - 1)
             Write-Host (" " * [Console]::WindowWidth)
         }
         
         # Position cursor back to where menu started
-        [Console]::SetCursorPosition(0, $currentPos.Y - 4)
+        [Console]::SetCursorPosition(0, $currentPos.Y - $linesToClear - 1)
         
         Write-Host ""
         
@@ -202,18 +269,24 @@
         }
         
     } elseif ($result -eq 1) {  # No selected
-        # Clear the menu lines first
+        # Clear the menu and changelog lines
         $console = $Host.UI.RawUI
         $currentPos = $console.CursorPosition
         
-        # Move cursor back and clear the menu area (3 lines: menu + blank + instructions)
-        for ($i = 0; $i -lt 3; $i++) {
+        # Calculate total lines to clear (menu + changelog)
+        $linesToClear = 3  # menu + blank + instructions
+        if ($Changelog) {
+            $linesToClear += $script:changelogRenderedLines
+        }
+        
+        # Move cursor back and clear all lines
+        for ($i = 0; $i -lt $linesToClear; $i++) {
             [Console]::SetCursorPosition(0, $currentPos.Y - $i - 1)
             Write-Host (" " * [Console]::WindowWidth)
         }
         
         # Position cursor back to where menu started
-        [Console]::SetCursorPosition(0, $currentPos.Y - 3)
+        [Console]::SetCursorPosition(0, $currentPos.Y - $linesToClear)
         
         # Mute notifications
         $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)

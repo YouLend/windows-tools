@@ -5,6 +5,8 @@ Get-ChildItem -Path "$moduleRoot/functions" -Filter *.ps1 -Recurse | ForEach-Obj
     . $_.FullName
 }
 
+$version=get_th_version
+
 function th {
 	$Command = $args[0]
     if ($args.Count -gt 1) {
@@ -78,7 +80,7 @@ function th {
 			}
 		}
 		{ $_ -in @("version", "v") } {
-			get_th_version
+			Write-Host $version
 		}
 		{ $_ -in @("quickstart", "qs") } {
 			Start-Process "https://youlend.atlassian.net/wiki/spaces/ISS/pages/1384972392/TH+-+Teleport+Helper+Quick+Start"
@@ -99,11 +101,9 @@ function th {
 				demo_wave_loader
 			}
 		}
-		{ $_ -in @("update", "u") } {
-			choco upgrade th -y
-		}
 		{ $_ -in @("notifications", "n") } {
-			create_notification "$version" "1.6.1"
+			$changelog = get_changelog "1.6.4"
+			create_notification "$version" "1.6.4" $changelog
 		}
 		"" {
 			if (Get-Command less -ErrorAction SilentlyContinue) {
