@@ -6,6 +6,7 @@ Get-ChildItem -Path "$moduleRoot/functions" -Filter *.ps1 -Recurse | ForEach-Obj
 }
 
 function th {
+	$Command = $args[0]
     if ($args.Count -gt 1) {
 		$SubArgs = @($args[1..($args.Count - 1)])
 	} else {
@@ -52,7 +53,7 @@ function th {
 				}
 			}
 		}
-		{ $_ -in @("database", "db", "d") } {
+		{ $_ -in @("database", "d") } {
 			if ($SubArgs[0] -eq "-h") {
 				print_db_help
 			} else {

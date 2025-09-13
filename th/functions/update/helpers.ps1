@@ -228,7 +228,9 @@ function install_th_update {
         [string]$Indent = ""
     )
     
-    Write-Host ($Indent + "Installing TH version $Version...") -ForegroundColor Green
+    Write-Host ($Indent + "Installing th version ") -NoNewLine
+    Write-Host $version -ForegroundColor Green -NoNewLine
+    Write-Host "...`n"
     
     try {
         $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -239,10 +241,10 @@ function install_th_update {
         $downloadUrl = "https://github.com/YouLend/windows-tools/archive/refs/tags/th-v$Version.zip"
         $zipPath = Join-Path $tempDir "th-v$Version.zip"
         
-        Write-Host ($Indent + "Downloading from GitHub...") -ForegroundColor Cyan
+        Write-Host ($Indent + "Downloading from GitHub...`n") -ForegroundColor Cyan
         Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -ErrorAction Stop
         
-        Write-Host ($Indent + "Extracting files...") -ForegroundColor Cyan
+        Write-Host ($Indent + "Extracting files...`n")
         Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
         
         # Backup version cache
@@ -253,7 +255,7 @@ function install_th_update {
         }
         
         # Replace files
-        Write-Host ($Indent + "Installing new files...") -ForegroundColor Cyan
+        Write-Host ($Indent + "Installing new files...`n")
         Get-ChildItem -Path $moduleDir -Exclude ".th_version_cache" | Remove-Item -Recurse -Force
         Copy-Item -Path "$tempDir\windows-tools-th-v$Version\th\*" -Destination $moduleDir -Recurse -Force
         
@@ -263,7 +265,6 @@ function install_th_update {
         # Cleanup
         Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
         
-        Write-Host ($Indent + "✅ Update completed!") -ForegroundColor Green
         return $true
         
     } catch {

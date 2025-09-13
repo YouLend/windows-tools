@@ -237,26 +237,43 @@ function print_db_help {
     Write-Host "    ║"
     Write-Host "    ╚═ " -NoNewline
     Write-Host "<db-env>" -NoNewline -ForegroundColor White
-    Write-Host " is an abbreviation for an RDS or Mongo database, using the format:"
-    Write-Host "    ║           <dbtype-env>. e.g. " -NoNewline
+    Write-Host "   is an abbreviation for a database, using the format:" -NoNewLine
+    Write-Host " dbtype-env" -ForegroundColor White
+    Write-Host "    ║             e.g. " -NoNewline
     Write-Host "r-dev" -NoNewline -ForegroundColor White
     Write-Host " would connect to the " -NoNewline
-    Write-Host "dev RDS cluster" -ForegroundColor White
+    Write-Host "dev, RDS cluster." -ForegroundColor White
     Write-Host "    ╚═ " -NoNewline
-    Write-Host "<port>" -NoNewline -ForegroundColor White
-    Write-Host "   is another optional arg that allows you to specify a"
-    Write-Host "                custom port for connection reuse in GUIs"
+    Write-Host "[opt_args]" -NoNewline -ForegroundColor White
+    Write-Host " either a port number or 'c', depending on connection method:"
+    Write-Host "        ║"
+    Write-Host "        ╚═ " -NoNewline
+    Write-Host "[port]" -NoNewLine -ForegroundColor White
+    Write-Host " an integer, 10000-50000. Useful for connection re-use in GUI's."
+    Write-Host "        ║"
+    Write-Host "        ╚═ " -NoNewline
+    Write-Host "[c]" -NoNewline -ForegroundColor White
+    Write-Host " connects via CLI (psql or mongosh)." 
     Write-Host ""
     Write-Host "Examples:"
     Write-Host " ╚═ " -NoNewline
     ccode "th d r-dev"
-    Write-Host "        : connects to the " -NoNewline
+    Write-Host "        : connects to " -NoNewline
     Write-Host "db-dev-aurora-postgres-1" -ForegroundColor Green -NoNewLine
     Write-Host "."
     Write-Host " ╚═ " -NoNewline
+    ccode "th d m-prod c"
+    Write-Host "     : connects to " -NoNewline
+    Write-Host "mongodb-YLProd-Cluster-1" -ForegroundColor Green -NoNewLine
+    Write-Host " via " -NoNewline
+    Write-Host "mongosh" -ForegroundColor Green -NoNewLine
+    Write-Host "."
+    Write-Host " ╚═ " -NoNewline
     ccode "th d m-prod 43000"
-    Write-Host " : connects to " -NoNewline
+    Write-Host " : Opens " -NoNewline
     Write-Host "mongodb-YLProd-Cluster-1" -NoNewline -ForegroundColor Green
+    Write-Host " in " -NoNewline
+    Write-Host "MongoDB Compass" -ForegroundColor Green -NoNewLine
     Write-Host " on port " -NoNewline
     Write-Host "43000" -ForegroundColor Green -NoNewLine
     Write-Host ".`n"
