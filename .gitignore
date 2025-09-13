@@ -1,3 +1,4 @@
 .th_version_cache
 /chocolatey
 /.claude
+.DS_Store
