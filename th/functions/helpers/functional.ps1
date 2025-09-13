@@ -3,30 +3,23 @@
 # ========================================================================================================================
 
 function get_th_version {
-    $version_cache = "$env:APPDATA\.th_version"
-    if (Test-Path $version_cache) {
-        Get-Content $version_cache
-    } else {
-        # First time or cache missing - create it
-        $cacheDir = Split-Path $version_cache -Parent
-        if (-not (Test-Path $cacheDir)) {
-            New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
-        }
-        
+    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $versionCacheFile = Join-Path $moduleDir ".th_version_cache"
+    
+    if (Test-Path $versionCacheFile) {
         try {
-            $chocoInfo = choco list --local-only th --exact --limit-output
-            if ($chocoInfo -match "th\|(.+)") {
-                $Matches[1] | Set-Content $version_cache
-                Get-Content $version_cache
-            } else {
-                "unknown" | Set-Content $version_cache
-                "unknown"
+            $cacheContent = Get-Content $versionCacheFile -Raw
+            $lines = $cacheContent -split "`n"
+            foreach ($line in $lines) {
+                if ($line -match "^CURRENT_VERSION:(.+)$") {
+                    return $matches[1].Trim()
+                }
             }
         } catch {
-            "unknown" | Set-Content $version_cache
-            "unknown"
+            # Return null if can't read
         }
     }
+    return $null
 }
 
 function load_config {

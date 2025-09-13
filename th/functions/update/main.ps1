@@ -8,12 +8,51 @@
     $title = "📦 Update Available!"
     $titleLen = $title.Length
     
-    # Use pre-captured terminal output (captured before command execution)
+    # Capture current terminal state before clearing
     $savedOutput = @()
     $savedCursorPos = $null
-    if ($global:PreCommandOutput) {
-        $savedOutput = $global:PreCommandOutput
-        $savedCursorPos = $global:PreCommandCursorPos
+    
+    try {
+        $console = $Host.UI.RawUI
+        $cursorPos = $console.CursorPosition
+        $savedCursorPos = $cursorPos
+        
+        # Calculate rectangle coordinates for buffer capture
+        $left = 0
+        $top = 0
+        $right = $console.BufferSize.Width - 1
+        $bottom = $cursorPos.Y
+        
+        # Only capture if there's content to capture
+        if ($bottom -ge $top -and $bottom -lt $console.BufferSize.Height) {
+            $rect = New-Object System.Management.Automation.Host.Rectangle($left, $top, $right, $bottom)
+            $buffer = $console.GetBufferContents($rect)
+            
+            # Convert buffer to objects preserving both characters and colors
+            for ($y = 0; $y -lt $buffer.GetLength(0); $y++) {
+                $lineData = @()
+                for ($x = 0; $x -lt $buffer.GetLength(1); $x++) {
+                    $char = $buffer[$y, $x].Character
+                    # Handle Unicode/emoji characters properly
+                    if ([char]::IsControl($char) -and $char -ne "`t" -and $char -ne "`n" -and $char -ne "`r") {
+                        $char = " "  # Replace control chars with space except tab/newline
+                    }
+                    $lineData += @{
+                        Character = $char
+                        ForegroundColor = $buffer[$y, $x].ForegroundColor
+                        BackgroundColor = $buffer[$y, $x].BackgroundColor
+                    }
+                }
+                $savedOutput += @{
+                    LineData = $lineData
+                    IsColoredLine = $true
+                }
+            }
+        }
+    } catch {
+        # If buffer reading fails, just continue without restoration
+        $savedOutput = @()
+        $savedCursorPos = $null
     }
     
     # Clear screen
@@ -90,39 +129,69 @@
         [Console]::SetCursorPosition(0, $currentPos.Y - 4)
         
         Write-Host ""
-        Write-Host ($indent + "Updating th...") -ForegroundColor Green
-        Write-Host ""
         
-        try {
-            $output = choco info th --version=1.5.0
-            $output | ForEach-Object { 
-                Write-Host ($indent + $_)
-            }
-            
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host ""
-                Write-Host ($indent + "th updated successfully!") -ForegroundColor Green
-                Write-Host ""
-            } else {
-                Write-Host ""
-                Write-Host ($indent + "Update failed. Please try manually.") -ForegroundColor Red
-                Write-Host ""
-            }
-        } catch {
+        $updateResult = install_th_update $latest_version $indent
+        
+        if ($updateResult) {
             Write-Host ""
-            Write-Host ($indent + "Update failed: " + $_.Exception.Message) -ForegroundColor Red
+            Write-Host ($indent + "✅ th updated successfully to version $latest_version!") -ForegroundColor Green
+            Write-Host ($indent + "⚠️  Please restart PowerShell to use the new version.") -ForegroundColor Yellow
+            Write-Host ""
+        } else {
+            Write-Host ""
+            Write-Host ($indent + "❌ Update failed. Please try again later.") -ForegroundColor Red
             Write-Host ""
         }
         
         Write-Host ($indent + "Press enter to continue...")
         Read-Host
         
-        # Restore the saved terminal output
+        # Restore the saved terminal output with colors
         Clear-Host
         if ($savedOutput.Count -gt 0) {
-            foreach ($line in $savedOutput) {
-                Write-Host $line
+            foreach ($lineObj in $savedOutput) {
+                if ($lineObj.IsColoredLine) {
+                    # Reconstruct the line with colors
+                    $lineText = ""
+                    $currentFg = $null
+                    $currentBg = $null
+                    
+                    foreach ($charObj in $lineObj.LineData) {
+                        # If colors changed, output what we have and start fresh
+                        if ($charObj.ForegroundColor -ne $currentFg -or $charObj.BackgroundColor -ne $currentBg) {
+                            if ($lineText) {
+                                if ($currentFg -ne $null -and $currentBg -ne $null) {
+                                    Write-Host $lineText -NoNewline -ForegroundColor $currentFg -BackgroundColor $currentBg
+                                } elseif ($currentFg -ne $null) {
+                                    Write-Host $lineText -NoNewline -ForegroundColor $currentFg
+                                } else {
+                                    Write-Host $lineText -NoNewline
+                                }
+                                $lineText = ""
+                            }
+                            $currentFg = $charObj.ForegroundColor
+                            $currentBg = $charObj.BackgroundColor
+                        }
+                        $lineText += $charObj.Character
+                    }
+                    
+                    # Output remaining text
+                    if ($lineText) {
+                        if ($currentFg -ne $null -and $currentBg -ne $null) {
+                            Write-Host $lineText -ForegroundColor $currentFg -BackgroundColor $currentBg
+                        } elseif ($currentFg -ne $null) {
+                            Write-Host $lineText -ForegroundColor $currentFg
+                        } else {
+                            Write-Host $lineText
+                        }
+                    } else {
+                        Write-Host ""  # Empty line
+                    }
+                } else {
+                    Write-Host $lineObj
+                }
             }
+            
             # Position cursor at the end
             if ($savedCursorPos) {
                 try {
@@ -160,12 +229,52 @@
         Write-Host ($indent + "Update notifications muted until tomorrow.") -ForegroundColor White
         Start-Sleep -Seconds 2
         
-        # Restore the saved terminal output
+        # Restore the saved terminal output with colors
         Clear-Host
         if ($savedOutput.Count -gt 0) {
-            foreach ($line in $savedOutput) {
-                Write-Host $line
+            foreach ($lineObj in $savedOutput) {
+                if ($lineObj.IsColoredLine) {
+                    # Reconstruct the line with colors
+                    $lineText = ""
+                    $currentFg = $null
+                    $currentBg = $null
+                    
+                    foreach ($charObj in $lineObj.LineData) {
+                        # If colors changed, output what we have and start fresh
+                        if ($charObj.ForegroundColor -ne $currentFg -or $charObj.BackgroundColor -ne $currentBg) {
+                            if ($lineText) {
+                                if ($currentFg -ne $null -and $currentBg -ne $null) {
+                                    Write-Host $lineText -NoNewline -ForegroundColor $currentFg -BackgroundColor $currentBg
+                                } elseif ($currentFg -ne $null) {
+                                    Write-Host $lineText -NoNewline -ForegroundColor $currentFg
+                                } else {
+                                    Write-Host $lineText -NoNewline
+                                }
+                                $lineText = ""
+                            }
+                            $currentFg = $charObj.ForegroundColor
+                            $currentBg = $charObj.BackgroundColor
+                        }
+                        $lineText += $charObj.Character
+                    }
+                    
+                    # Output remaining text
+                    if ($lineText) {
+                        if ($currentFg -ne $null -and $currentBg -ne $null) {
+                            Write-Host $lineText -ForegroundColor $currentFg -BackgroundColor $currentBg
+                        } elseif ($currentFg -ne $null) {
+                            Write-Host $lineText -ForegroundColor $currentFg
+                        } else {
+                            Write-Host $lineText
+                        }
+                    } else {
+                        Write-Host ""  # Empty line
+                    }
+                } else {
+                    Write-Host $lineObj
+                }
             }
+            
             # Position cursor at the end
             if ($savedCursorPos) {
                 try {

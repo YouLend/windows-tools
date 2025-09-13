@@ -1,31 +1,26 @@
 ﻿# Background update checker
 function check_th_updates_background {
-    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-    $cacheDir = Join-Path $userProfile ".cache"
-    $dailyCacheFile = Join-Path $cacheDir "th_update_check"
+    # Use th module directory for cache
+    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $versionCacheFile = Join-Path $moduleDir ".th_version_cache"
     $sessionCacheFile = Join-Path ([System.IO.Path]::GetTempPath()) ("th_update_check_session_" + [System.Guid]::NewGuid().ToString("N").Substring(0, 8))
     
-    # Create cache directory if it doesn't exist
-    if (-not (Test-Path $cacheDir)) {
-        New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
-    }
-    
     # Check if we already checked today
-    if (Test-Path $dailyCacheFile) {
-        $cacheTime = (Get-Item $dailyCacheFile).LastWriteTime
+    if (Test-Path $versionCacheFile) {
+        $cacheTime = (Get-Item $versionCacheFile -Force).LastWriteTime
         $currentTime = Get-Date
         $timeDiff = ($currentTime - $cacheTime).TotalSeconds
         
         # If cache is less than 24 hours old, use cached result
-        if ($timeDiff -lt 86400) {
+        if ($timeDiff -lt 10) {
             try {
-                $cachedResult = Get-Content $dailyCacheFile -Raw -ErrorAction Stop
+                $cachedResult = Get-Content $versionCacheFile -Raw -ErrorAction Stop
                 # If muted, keep it muted until time passes
                 if ($cachedResult.Trim() -eq "MUTED") {
-                    Copy-Item $dailyCacheFile $sessionCacheFile -ErrorAction SilentlyContinue
+                    Copy-Item $versionCacheFile $sessionCacheFile -ErrorAction SilentlyContinue
                     return $sessionCacheFile
                 } else {
-                    Copy-Item $dailyCacheFile $sessionCacheFile -ErrorAction SilentlyContinue
+                    Copy-Item $versionCacheFile $sessionCacheFile -ErrorAction SilentlyContinue
                     return $sessionCacheFile
                 }
             } catch {
@@ -36,7 +31,7 @@ function check_th_updates_background {
     
     # Start background process
     $job = Start-Job -ScriptBlock {
-        param($dailyCache, $sessionCache)
+        param($versionCache, $sessionCache)
         
         try {
             # Use GitHub API to check for updates
@@ -46,45 +41,46 @@ function check_th_updates_background {
             # Normal update check
             $forceUpdate = $false
                 
-                # Get current version from the module or th.psm1
+                # Get current version from version cache file
                 $moduleVersion = $null
-                try {
-                    # First try to get from loaded module
-                    $loadedModule = Get-Module th
-                    if ($loadedModule) {
-                        $moduleVersion = $loadedModule.Version.ToString()
-                    } else {
-                        # Try to get from available modules
-                        $moduleInfo = Get-Module th -ListAvailable | Select-Object -First 1
-                        if ($moduleInfo) {
-                            $moduleVersion = $moduleInfo.Version.ToString()
-                        }
-                    }
-                    
-                    # If still null, try to read from th.psm1 file
-                    if (-not $moduleVersion) {
-                        $scriptDir = Split-Path -Parent $PSScriptRoot
-                        $thmPsm1 = Join-Path $scriptDir "th.psm1"
-                        if (Test-Path $thmPsm1) {
-                            $content = Get-Content $thmPsm1 -Raw
-                            if ($content -match '\$version\s*=\s*"([^"]+)"') {
-                                $moduleVersion = $matches[1]
+                
+                # Try to read current version from cache file
+                if (Test-Path $versionCache) {
+                    try {
+                        $cacheContent = Get-Content $versionCache -Raw -ErrorAction Stop
+                        $lines = $cacheContent -split "`n"
+                        foreach ($line in $lines) {
+                            if ($line -match "^CURRENT_VERSION:(.+)$") {
+                                $moduleVersion = $matches[1].Trim()
+                                break
                             }
                         }
+                    } catch {
+                        # Ignore errors reading cache
                     }
-                } catch {
-                    # Ignore errors
                 }
                 
-                # Final fallback to hardcoded version
+                # If no version in cache, set default and save it
                 if (-not $moduleVersion) {
                     $moduleVersion = "1.6.0"
+                    $versionContent = "CURRENT_VERSION:$moduleVersion`nLAST_CHECK:$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n"
+                    Set-Content -Path $versionCache -Value $versionContent -ErrorAction SilentlyContinue
+                    
+                    # Make cache file hidden
+                    if (Test-Path $versionCache) {
+                        try {
+                            $file = Get-Item $versionCache -Force
+                            $file.Attributes = $file.Attributes -bor [System.IO.FileAttributes]::Hidden
+                        } catch {
+                            # Ignore if can't set hidden attribute
+                        }
+                    }
                 }
                 
                 # Get latest release from GitHub
                 try {
                     $response = Invoke-RestMethod -Uri $apiUrl -ErrorAction Stop
-                    $latestVersion = $response.tag_name -replace '^v', ''  # Remove 'v' prefix if present
+                    $latestVersion = $response.tag_name -replace '^(th-)?v?', ''  # Remove 'th-v' or 'v' prefix if present
                     
                     # Compare versions
                     if ($moduleVersion -ne $latestVersion) {
@@ -92,19 +88,46 @@ function check_th_updates_background {
                     } else {
                         $result = "UP_TO_DATE"
                     }
+                    
+                    # Update version cache with comprehensive info
+                    $versionContent = @"
+CURRENT_VERSION:$moduleVersion
+LATEST_VERSION:$latestVersion
+LAST_CHECK:$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+STATUS:$($result.Split(':')[0])
+"@
+                    Set-Content -Path $versionCache -Value $versionContent -ErrorAction SilentlyContinue
+                    
                 } catch {
                     $result = "ERROR_CHECKING_UPDATES"
+                    
+                    # Still update cache with current version and error status
+                    $versionContent = @"
+CURRENT_VERSION:$moduleVersion
+LATEST_VERSION:UNKNOWN
+LAST_CHECK:$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+STATUS:ERROR_CHECKING_UPDATES
+"@
+                    Set-Content -Path $versionCache -Value $versionContent -ErrorAction SilentlyContinue
                 }
             
-            # Write to both cache files
-            Set-Content -Path $dailyCache -Value $result -ErrorAction SilentlyContinue
+            # Write to session cache for immediate use
             Set-Content -Path $sessionCache -Value $result -ErrorAction SilentlyContinue
+            
+            # Make version cache file hidden
+            if (Test-Path $versionCache) {
+                try {
+                    $file = Get-Item $versionCache -Force
+                    $file.Attributes = $file.Attributes -bor [System.IO.FileAttributes]::Hidden
+                } catch {
+                    # Ignore if can't set hidden attribute
+                }
+            }
         } catch {
             $errorResult = "ERROR_CHECKING_UPDATES"
-            Set-Content -Path $dailyCache -Value $errorResult -ErrorAction SilentlyContinue
             Set-Content -Path $sessionCache -Value $errorResult -ErrorAction SilentlyContinue
         }
-    } -ArgumentList $dailyCacheFile, $sessionCacheFile
+    } -ArgumentList $versionCacheFile, $sessionCacheFile
     
     # Don't wait for job to complete, just return the session cache file path
     return $sessionCacheFile
@@ -158,7 +181,7 @@ function show_update_notification {
                     # Ignore git errors
                 }
                 
-                create_notification -Title "Update Available!" -Message "Would you like to update now? $currentVersion to $latestVersion" -ShowPrompt $true -Changelog $changelog
+                create_notification $currentVersion $latestVersion $changelog
             }
         }
     }
@@ -166,6 +189,86 @@ function show_update_notification {
     # Clean up cache file
     if (Test-Path $UpdateCacheFile) {
         Remove-Item $UpdateCacheFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# Function to update the current version in the cache
+function update_current_version {
+    param([string]$NewVersion)
+    
+    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $versionCacheFile = Join-Path $moduleDir ".th_version_cache"
+    
+    $versionContent = @"
+CURRENT_VERSION:$NewVersion
+LATEST_VERSION:$NewVersion
+LAST_CHECK:$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+STATUS:UP_TO_DATE
+"@
+    
+    Set-Content -Path $versionCacheFile -Value $versionContent
+    
+    # Make cache file hidden
+    if (Test-Path $versionCacheFile) {
+        try {
+            $file = Get-Item $versionCacheFile -Force
+            $file.Attributes = $file.Attributes -bor [System.IO.FileAttributes]::Hidden
+        } catch {
+            # Ignore if can't set hidden attribute
+        }
+    }
+    
+    Write-Host "Version updated to $NewVersion" -ForegroundColor Green
+}
+
+# Function to download and install update from GitHub
+function install_th_update {
+    param(
+        [string]$Version,
+        [string]$Indent = ""
+    )
+    
+    Write-Host ($Indent + "Installing TH version $Version...") -ForegroundColor Green
+    
+    try {
+        $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "th_update_$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
+        New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+        
+        # Download and extract
+        $downloadUrl = "https://github.com/YouLend/windows-tools/archive/refs/tags/th-v$Version.zip"
+        $zipPath = Join-Path $tempDir "th-v$Version.zip"
+        
+        Write-Host ($Indent + "Downloading from GitHub...") -ForegroundColor Cyan
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $zipPath -ErrorAction Stop
+        
+        Write-Host ($Indent + "Extracting files...") -ForegroundColor Cyan
+        Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+        
+        # Backup version cache
+        $versionCacheFile = Join-Path $moduleDir ".th_version_cache"
+        $versionCacheBackup = $null
+        if (Test-Path $versionCacheFile) {
+            $versionCacheBackup = Get-Content $versionCacheFile -Raw
+        }
+        
+        # Replace files
+        Write-Host ($Indent + "Installing new files...") -ForegroundColor Cyan
+        Get-ChildItem -Path $moduleDir -Exclude ".th_version_cache" | Remove-Item -Recurse -Force
+        Copy-Item -Path "$tempDir\windows-tools-th-v$Version\th\*" -Destination $moduleDir -Recurse -Force
+        
+        # Update version cache
+        update_current_version $Version
+        
+        # Cleanup
+        Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        
+        Write-Host ($Indent + "✅ Update completed!") -ForegroundColor Green
+        return $true
+        
+    } catch {
+        Write-Host ($Indent + "❌ Update failed: $($_.Exception.Message)") -ForegroundColor Red
+        return $false
     }
 }
 
