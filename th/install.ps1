@@ -46,7 +46,7 @@ function create_header {
 }
 
 # Create header
-Clear-Host
+#Clear-Host
 create_header "🚀 TH (Teleport Helper) Installer" $indent
 
 # Get latest version if not specified
