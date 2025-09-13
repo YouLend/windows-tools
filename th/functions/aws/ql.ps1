@@ -35,18 +35,17 @@
     }
 
     # Check for elevated privilege requirements
-    $status = & tsh status 2>&1 | Out-String
-    
     if ($sudo_flag -eq "ss") {
-        # Super sudo requires TeamLead role
-        if (-not ($status -match "TeamLead")) {
-            Write-Host "Error: You don't have access to super_sudo roles.`n" -ForegroundColor Red
+        # Super sudo requires checking available roles
+        $loginOutput = & tsh apps login $account_name 2>&1 | Out-String
+        if (-not ($loginOutput -match "super_sudo_$role_value")) {
+            Write-Host "`nError: You don't have access to super_sudo roles.`n" -ForegroundColor Red
             return
         }
     } elseif ($sudo_flag -eq "s") {
         # Regular sudo check
-        $required_role = "sudo_$($role_value)_role"
-        if (-not ($status -match $required_role)) {
+        $loginOutput = & tsh apps login $account_name 2>&1 | Out-String
+        if (-not ($loginOutput -match "sudo_$role_value")) {
             aws_elevated_login $account_name $role_value
             if ($global:reauth_aws -eq $false) {
                 return

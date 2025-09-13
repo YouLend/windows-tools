@@ -124,7 +124,7 @@ function th {
 			if ($SubArgs[0] -eq "-h") {
 				Write-Output "Log in to Teleport."
 			} else {
-				tsh login --auth=ad --proxy=youlend.teleport.sh:443
+				th_login
 			}
 		}
 		{ $_ -in @("version", "v") } {

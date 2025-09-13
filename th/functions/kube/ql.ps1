@@ -13,12 +13,15 @@ function kube_quick_login {
     # Check for privileged environments requiring elevated access
     switch ($ql_arg) {
         { $_ -in @("prod", "uprod") } {
-            $request_role = load_request_role "kube" $ql_arg
-            if (-not [string]::IsNullOrEmpty($request_role)) {
-                $status = & tsh status 2>$null
-                if ($status -notmatch $request_role) {
-                    kube_elevated_login $cluster_name $ql_arg
+            $loginResult = & tsh kube login $cluster_name 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $authResult = & kubectl auth can-i create pod 2>&1
+                if ($LASTEXITCODE -ne 0) {
+                    kube_elevated_login $cluster_name
                 }
+            } else {
+                Write-Host "`n❌ Cluster not found. Please contact your Teleport admin." -ForegroundColor Red
+                return
             }
         }
     }

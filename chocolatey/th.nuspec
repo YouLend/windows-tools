@@ -5,7 +5,7 @@
     <version>1.6.0</version>
     <packageSourceUrl>https://github.com/YouLend/windows-tools</packageSourceUrl>
     <owners>Nikolai Main</owners>
-    <title>TH - Teleport Helper</title>
+    <title>th</title>
     <authors>Nikolai Main</authors>
     <projectUrl>https://github.com/YouLend/windows-tools</projectUrl>
     <iconUrl>https://raw.githubusercontent.com/YouLend/windows-tools/main/th/icon.png</iconUrl>

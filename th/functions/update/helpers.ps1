@@ -16,8 +16,8 @@ function check_th_updates_background {
         $currentTime = Get-Date
         $timeDiff = ($currentTime - $cacheTime).TotalSeconds
         
-        # If cache is less than 24 hours old, use cached result (using 10 seconds for testing)
-        if ($timeDiff -lt 2300 ) {
+        # If cache is less than 24 hours old, use cached result
+        if ($timeDiff -lt 86400) {
             try {
                 $cachedResult = Get-Content $dailyCacheFile -Raw -ErrorAction Stop
                 # If muted, keep it muted until time passes
@@ -43,8 +43,8 @@ function check_th_updates_background {
             $repo = "YouLend/windows-tools"
             $apiUrl = "https://api.github.com/repos/$repo/releases/latest"
             
-            # Force update check for testing
-            $forceUpdate = $true
+            # Normal update check
+            $forceUpdate = $false
                 
                 # Get current version from the module or th.psm1
                 $moduleVersion = $null
@@ -78,7 +78,7 @@ function check_th_updates_background {
                 
                 # Final fallback to hardcoded version
                 if (-not $moduleVersion) {
-                    $moduleVersion = "1.5.3"
+                    $moduleVersion = "1.6.0"
                 }
                 
                 # Get latest release from GitHub
@@ -93,13 +93,7 @@ function check_th_updates_background {
                         $result = "UP_TO_DATE"
                     }
                 } catch {
-                    if ($forceUpdate) {
-                        # Fallback for testing when GitHub API is unavailable
-                        $latestVersion = "1.6.0"
-                        $result = "UPDATE_AVAILABLE:" + $moduleVersion + ":" + $latestVersion
-                    } else {
-                        $result = "ERROR_CHECKING_UPDATES"
-                    }
+                    $result = "ERROR_CHECKING_UPDATES"
                 }
             
             # Write to both cache files
