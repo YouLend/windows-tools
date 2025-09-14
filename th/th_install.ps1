@@ -338,8 +338,7 @@ function Install-Dependency {
                 # Try user-level installation first
                 Write-Host "`n$indent🔧" -NoNewLine -ForegroundColor Cyan
                 Write-Host " Installing DBeaver for current user..."
-                $installArgs = "/S /currentuser"
-                $installProcess = Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait -PassThru
+                $installProcess = Start-Process -FilePath $installerPath -Wait -PassThru
 
                 if ($installProcess.ExitCode -eq 0) {
                     Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green
