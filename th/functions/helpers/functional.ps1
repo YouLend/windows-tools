@@ -572,14 +572,14 @@ function th_config {
             $output | Out-File -FilePath $versionFile -Force
 
             Write-Host "`n✅ Update suppression updated to " -NoNewLine
-            Write-Host "$suppressionValue hours`n" -ForegroundColor Green
+            Write-Host "$suppressionValue hour/s`n" -ForegroundColor Green
         }
         default {
             Write-Host "`n❌ Unknown configuration option: $option" -ForegroundColor Red
             Write-Host ""
             Write-Host "Available options:" -ForegroundColor White
-            Write-Host "• timeout <minutes>        - Set inactivity timeout in minutes." -ForegroundColor Gray
-            Write-Host "• update-suppression <hours> - Set update check suppression in hours." -ForegroundColor Gray
+            Write-Host "• inactivity timeout (timeout) <minutes>   - Set inactivity timeout in minutes." -ForegroundColor Gray
+            Write-Host "• update suppression (suppression) <hours> - Set update check suppression in hours." -ForegroundColor Gray
             Write-Host ""
         }
     }
