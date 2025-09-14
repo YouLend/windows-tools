@@ -8,22 +8,20 @@ Get-ChildItem -Path "$moduleRoot/functions" -Filter *.ps1 -Recurse | ForEach-Obj
 $version=get_th_version
 
 function th {
+	# Update activity tracking for inactivity monitor
+	update_th_activity
+
+	# Check th updates 
+	$updateCacheFile = ""
+	$updateCacheFile = check_th_updates_background
+
 	$Command = $args[0]
     if ($args.Count -gt 1) {
 		$SubArgs = @($args[1..($args.Count - 1)])
 	} else {
 		$SubArgs = @()
 	}
-	
-	# Start background update check for interactive commands
-	$updateCacheFile = ""
-	switch ($Command) {
-		{ $_ -in @("kube", "k", "aws", "a", "database", "d", "db", "terra", "t") } {
-			$updateCacheFile = check_th_updates_background
-		}
-	}
-	
-    # Don't clear host immediately - let command run first, then check for updates
+
     switch ($Command) {
 		{ $_ -in @("kube", "k") } {
 			if ($SubArgs[0] -eq "-h") {
@@ -104,6 +102,13 @@ function th {
 		{ $_ -in @("notifications", "n") } {
 			$changelog = get_changelog "1.6.6"
 			create_notification "$version" "1.6.6" $changelog
+		}
+		{ $_ -in @("config", "cfg") } {
+			if ($SubArgs[0] -eq "-h") {
+				print_config_help
+			} else {
+				th_config -Arguments $SubArgs
+			}
 		}
 		"" {
 			if (Get-Command less -ErrorAction SilentlyContinue) {

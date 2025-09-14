@@ -1,4 +1,5 @@
 .th_version_cache
+.th/
 /chocolatey
 /.claude
 .DS_Store

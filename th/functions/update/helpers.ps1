@@ -2,17 +2,35 @@
 function check_th_updates_background {
     # Use th module directory for cache
     $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $versionCacheFile = Join-Path $moduleDir ".th_version_cache"
+    $versionCacheFile = Join-Path $moduleDir ".th\version"
     $sessionCacheFile = Join-Path ([System.IO.Path]::GetTempPath()) ("th_update_check_session_" + [System.Guid]::NewGuid().ToString("N").Substring(0, 8))
     
-    # Check if we already checked today
+    # Read update suppression config from version file
+    $suppressionHours = 1
+    if (Test-Path $versionCacheFile) {
+        try {
+            $lines = Get-Content $versionCacheFile
+            foreach ($line in $lines) {
+                if ($line -match "^UPDATE_SUPPRESSION_HOURS:\s*(.+)$") {
+                    $suppressionHours = [int]$matches[1].Trim()
+                    break
+                }
+            }
+        } catch {
+            # Use default if can't read
+        }
+    }
+
+    $suppressionHours = 0.01
+
+    # Check if we already checked recently
     if (Test-Path $versionCacheFile) {
         $cacheTime = (Get-Item $versionCacheFile -Force).LastWriteTime
         $currentTime = Get-Date
-        $timeDiff = ($currentTime - $cacheTime).TotalSeconds
-        
-        # If cache is less than 24 hours old, use cached result
-        if ($timeDiff -lt 10) {
+        $timeDiff = ($currentTime - $cacheTime).TotalHours
+
+        # If cache is less than suppression time old, use cached result
+        if ($timeDiff -lt $suppressionHours) {
             try {
                 $cachedResult = Get-Content $versionCacheFile -Raw -ErrorAction Stop
                 # If muted, keep it muted until time passes
@@ -60,21 +78,25 @@ function check_th_updates_background {
                     }
                 }
                 
-                # If no version in cache, set default and save it
+                # If no version in cache, set default and save it preserving existing config
                 if (-not $moduleVersion) {
                     $moduleVersion = "1.6.0"
-                    $versionContent = "CURRENT_VERSION:$moduleVersion`nLAST_CHECK:$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n"
-                    Set-Content -Path $versionCache -Value $versionContent -ErrorAction SilentlyContinue
-                    
-                    # Make cache file hidden
-                    if (Test-Path $versionCache) {
+
+                    # Create .th directory if it doesn't exist
+                    $thDir = Split-Path -Parent $versionCache
+                    if (-not (Test-Path $thDir)) {
+                        New-Item -ItemType Directory -Path $thDir -Force | Out-Null
+                        # Make directory hidden
                         try {
-                            $file = Get-Item $versionCache -Force
-                            $file.Attributes = $file.Attributes -bor [System.IO.FileAttributes]::Hidden
+                            $dir = Get-Item $thDir -Force
+                            $dir.Attributes = $dir.Attributes -bor [System.IO.FileAttributes]::Hidden
                         } catch {
-                            # Ignore if can't set hidden attribute
+                            # Ignore if can't set hidden
                         }
                     }
+
+                    $versionContent = "CURRENT_VERSION:$moduleVersion`nLAST_CHECK:$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')`n"
+                    Set-Content -Path $versionCache -Value $versionContent -ErrorAction SilentlyContinue
                 }
                 
                 # Get latest release from GitHub
@@ -89,24 +111,56 @@ function check_th_updates_background {
                         $result = "UP_TO_DATE"
                     }
                     
+                    # Read existing suppression setting
+                    $suppressionHours = ""
+                    if (Test-Path $versionCache) {
+                        try {
+                            $existingLines = Get-Content $versionCache
+                            foreach ($line in $existingLines) {
+                                if ($line -match "^UPDATE_SUPPRESSION_HOURS:\s*(.+)$") {
+                                    $suppressionHours = "`nUPDATE_SUPPRESSION_HOURS:$($matches[1].Trim())"
+                                    break
+                                }
+                            }
+                        } catch {
+                            # Ignore read errors
+                        }
+                    }
+
                     # Update version cache with comprehensive info
                     $versionContent = @"
 CURRENT_VERSION:$moduleVersion
 LATEST_VERSION:$latestVersion
 LAST_CHECK:$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-STATUS:$($result.Split(':')[0])
+STATUS:$($result.Split(':')[0])$suppressionHours
 "@
                     Set-Content -Path $versionCache -Value $versionContent -ErrorAction SilentlyContinue
                     
                 } catch {
                     $result = "ERROR_CHECKING_UPDATES"
                     
+                    # Read existing suppression setting for error case too
+                    $suppressionHours = ""
+                    if (Test-Path $versionCache) {
+                        try {
+                            $existingLines = Get-Content $versionCache
+                            foreach ($line in $existingLines) {
+                                if ($line -match "^UPDATE_SUPPRESSION_HOURS:\s*(.+)$") {
+                                    $suppressionHours = "`nUPDATE_SUPPRESSION_HOURS:$($matches[1].Trim())"
+                                    break
+                                }
+                            }
+                        } catch {
+                            # Ignore read errors
+                        }
+                    }
+
                     # Still update cache with current version and error status
                     $versionContent = @"
 CURRENT_VERSION:$moduleVersion
 LATEST_VERSION:UNKNOWN
 LAST_CHECK:$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-STATUS:ERROR_CHECKING_UPDATES
+STATUS:ERROR_CHECKING_UPDATES$suppressionHours
 "@
                     Set-Content -Path $versionCache -Value $versionContent -ErrorAction SilentlyContinue
                 }
@@ -114,15 +168,6 @@ STATUS:ERROR_CHECKING_UPDATES
             # Write to session cache for immediate use
             Set-Content -Path $sessionCache -Value $result -ErrorAction SilentlyContinue
             
-            # Make version cache file hidden
-            if (Test-Path $versionCache) {
-                try {
-                    $file = Get-Item $versionCache -Force
-                    $file.Attributes = $file.Attributes -bor [System.IO.FileAttributes]::Hidden
-                } catch {
-                    # Ignore if can't set hidden attribute
-                }
-            }
         } catch {
             $errorResult = "ERROR_CHECKING_UPDATES"
             Set-Content -Path $sessionCache -Value $errorResult -ErrorAction SilentlyContinue
@@ -181,28 +226,47 @@ function show_update_notification {
 # Function to update the current version in the cache
 function update_current_version {
     param([string]$NewVersion)
-    
+
     $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $versionCacheFile = Join-Path $moduleDir ".th_version_cache"
-    
+    $versionCacheFile = Join-Path $moduleDir ".th\version"
+
+    # Create .th directory if it doesn't exist
+    $thDir = Split-Path -Parent $versionCacheFile
+    if (-not (Test-Path $thDir)) {
+        New-Item -ItemType Directory -Path $thDir -Force | Out-Null
+        # Make directory hidden
+        try {
+            $dir = Get-Item $thDir -Force
+            $dir.Attributes = $dir.Attributes -bor [System.IO.FileAttributes]::Hidden
+        } catch {
+            # Ignore if can't set hidden
+        }
+    }
+
+    # Read existing suppression setting
+    $suppressionHours = ""
+    if (Test-Path $versionCacheFile) {
+        try {
+            $existingLines = Get-Content $versionCacheFile
+            foreach ($line in $existingLines) {
+                if ($line -match "^UPDATE_SUPPRESSION_HOURS:\s*(.+)$") {
+                    $suppressionHours = "`nUPDATE_SUPPRESSION_HOURS:$($matches[1].Trim())"
+                    break
+                }
+            }
+        } catch {
+            # Ignore read errors
+        }
+    }
+
     $versionContent = @"
 CURRENT_VERSION:$NewVersion
 LATEST_VERSION:$NewVersion
 LAST_CHECK:$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-STATUS:UP_TO_DATE
+STATUS:UP_TO_DATE$suppressionHours
 "@
-    
+
     Set-Content -Path $versionCacheFile -Value $versionContent
-    
-    # Make cache file hidden
-    if (Test-Path $versionCacheFile) {
-        try {
-            $file = Get-Item $versionCacheFile -Force
-            $file.Attributes = $file.Attributes -bor [System.IO.FileAttributes]::Hidden
-        } catch {
-            # Ignore if can't set hidden attribute
-        }
-    }
 }
 
 # Function to download and install update from GitHub
@@ -232,7 +296,7 @@ function install_th_update {
         Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
         
         # Backup version cache
-        $versionCacheFile = Join-Path $moduleDir ".th_version_cache"
+        $versionCacheFile = Join-Path $moduleDir ".th\version"
         $versionCacheBackup = $null
         if (Test-Path $versionCacheFile) {
             $versionCacheBackup = Get-Content $versionCacheFile -Raw
@@ -240,7 +304,7 @@ function install_th_update {
         
         # Replace files
         Write-Host ($Indent + "Installing new files...`n")
-        Get-ChildItem -Path $moduleDir -Exclude ".th_version_cache" | Remove-Item -Recurse -Force
+        Get-ChildItem -Path $moduleDir -Exclude ".th" | Remove-Item -Recurse -Force
         Copy-Item -Path "$tempDir\windows-tools-th-v$Version\th\*" -Destination $moduleDir -Recurse -Force
         
         # Update version cache

@@ -186,7 +186,7 @@ function print_help($Version) {
     Write-Host "$centerSpaces     ╚═ th login          | l   : Simple log in to Teleport" -ForegroundColor White
     Write-Host "$centerSpaces     ╚═ th clear          | c   : Clean up Teleport session." -ForegroundColor White
     Write-Host "$centerSpaces     ╚═ th version        | v   : Show the current version." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th update         | u   : Check for th updates." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th config               : Define config preferences." -ForegroundColor White
     
 
     # Divider line
@@ -208,7 +208,7 @@ function print_help($Version) {
     create_header -HeaderText "Extras" -CenterSpaces $centerSpaces
     Write-Host "$centerSpaces     Run the following commands to access the extra features:"
     Write-Host "$centerSpaces     ╚═ th loader              : Run loader animation." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th animate [option]    : Run logo animation." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th animate [options]    : Run logo animation." -ForegroundColor White
     Write-Host "$centerSpaces        ╚═ yl" -ForegroundColor White
     Write-Host "$centerSpaces        ╚═ th" -ForegroundColor White
 
@@ -280,7 +280,7 @@ function print_db_help {
 }
 
 function print_aws_help {
-    Clear-Host
+    #Clear-Host
     create_header "th aws | a"
     Write-Host "Login to our AWS accounts." -ForegroundColor White
     Write-Host ""
@@ -326,7 +326,10 @@ function print_aws_help {
     Write-Host "sudo_dev" -ForegroundColor Green
     Write-Host " ╚═ " -NoNewline
     ccode "th a dev ssb"
-    Write-Host " : Opens the AWS console for super_sudo in yl-development`n"
+    Write-Host " : Opens the AWS console for " -NoNewLine
+    Write-Host "yl-development" -NoNewLine -ForegroundColor Green
+    Write-Host " as " -NoNewLine
+    Write-Host "super_sudo_dev`n " -NoNewLine -ForegroundColor Green
 }
 
 function print_kube_help {
@@ -354,6 +357,27 @@ function print_kube_help {
     Write-Host "aslive-dev-eks-blue.`n" -ForegroundColor Green
 }
 
+function print_config_help {
+    Clear-Host
+    create_header "th config"
+    Write-Host "Manage & define configuration preferences" -ForegroundColor White
+    Write-Host "`nUsage: " -NoNewLine
+    Write-Host "th config [options]" -ForegroundColor White
+    Write-Host " ╚═ " -NoNewline
+    Write-Host "th config" -NoNewline -ForegroundColor White
+    Write-Host "               : Display current configuration settings."
+    Write-Host " ╚═ " -NoNewline
+    Write-Host "th config <key> <value>" -NoNewline -ForegroundColor White
+    Write-Host " : Set a given configuration value."
+    Write-Host "`nAvailable [options]:" -ForegroundColor White
+    Write-Host "• timeout <minutes> " -NoNewLine -ForegroundColor White
+    Write-Host "- Set inactivity timeout in minutes" -ForegroundColor Gray
+    Write-Host "`nExamples:"
+    Write-Host " ╚═ " -NoNewline
+    ccode "th config timeout 120"
+    Write-Host " : Sets inactivity timeout to " -NoNewLine
+    Write-Host "120 minutes`n " -NoNewLine -ForegroundColor Green
+}
 # ========================================================================================================================
 #                                                            Extras
 # ========================================================================================================================

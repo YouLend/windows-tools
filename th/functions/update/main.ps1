@@ -288,17 +288,40 @@
         # Position cursor back to where menu started
         [Console]::SetCursorPosition(0, $currentPos.Y - $linesToClear)
         
-        # Mute notifications
-        $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-        $cacheDir = Join-Path $userProfile ".cache"
-        $dailyCacheFile = Join-Path $cacheDir "th_update_check"
-        
-        if (-not (Test-Path $cacheDir)) {
-            New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null
+        # Mute notifications by updating version file timestamp
+        $moduleDir = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+        $versionFile = Join-Path $moduleDir ".th\version"
+
+        # Read current suppression hours
+        $suppressionHours = 1
+        $versionData = @{}
+        if (Test-Path $versionFile) {
+            try {
+                $lines = Get-Content $versionFile
+                foreach ($line in $lines) {
+                    if ($line -match "^([^:]+):\s*(.+)$") {
+                        $versionData[$matches[1]] = $matches[2]
+                    }
+                }
+                if ($versionData.ContainsKey("UPDATE_SUPPRESSION_HOURS")) {
+                    $suppressionHours = [int]$versionData["UPDATE_SUPPRESSION_HOURS"]
+                }
+            } catch {
+                # Use default
+            }
         }
-        Set-Content -Path $dailyCacheFile -Value "MUTED"
-        
-        Write-Host ($indent + "Update notifications muted until tomorrow.") -ForegroundColor White
+
+        # Update the file timestamp to suppress notifications
+        if (Test-Path $versionFile) {
+            try {
+                $file = Get-Item $versionFile -Force
+                $file.LastWriteTime = (Get-Date)
+            } catch {
+                # Ignore timestamp update errors
+            }
+        }
+
+        Write-Host ($indent + "Update notifications muted for $suppressionHours hour/s.") -ForegroundColor White
         Start-Sleep -Seconds 2
         
         # Restore the saved terminal output with colors

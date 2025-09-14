@@ -49,46 +49,7 @@ function open_atlas {
     & tsh db login $cluster --db-user=$db_user --db-name="admin" > $null 2>&1
     Write-Host "`nLogged in successfully!" -ForegroundColor Green
 
-    # Create a proxy for the selected db.
-    Write-Host "`nCreating proxy for " -NoNewline
-    Write-Host $cluster -ForegroundColor Green -NoNewline
-    Write-Host "..."
-    
-    # Create script to run proxy with Tee-Object (allows proxy to keep running)
-    $tempDir = $env:TEMP
-    $logFile = Join-Path $tempDir "tsh_proxy_mongo_$cluster.log"
-    $scriptPath = Join-Path $tempDir "launch_mongo_proxy_$cluster.ps1"
-    $command = "tsh proxy db --tunnel --port=$port `"$cluster`" 2>&1 | Tee-Object -FilePath `"$logFile`""
-    Set-Content -Path $scriptPath -Value $command
-
-    # Start proxy in separate minimized PowerShell window
-    $proc = Start-Process powershell.exe -ArgumentList "-WindowStyle Minimized", "-ExecutionPolicy Bypass", "-File `"$scriptPath`"" -PassThru
-    $pidFile = Join-Path $tempDir "tsh_proxy_mongo_$cluster.pid"
-    $proc.Id | Out-File -FilePath $pidFile
-
-    # Wait for proxy to start listening on the port
-    Write-Host "`nWaiting for MongoDB proxy to start..."
-    $maxWaitTime = 20
-    $waitCount = 0
-    $proxyReady = $false
-    
-    while ($waitCount -lt $maxWaitTime -and -not $proxyReady) {
-        Start-Sleep -Milliseconds 500
-        $waitCount++
-        
-        # Check if port is listening
-        $tcpConnection = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-        if ($tcpConnection) {
-            $proxyReady = $true
-            Write-Host "`nMongoDB proxy ready on port $port" -ForegroundColor Green
-        }
-    }
-    
-    if (-not $proxyReady) {
-        Write-Host "`nTimed out waiting for MongoDB proxy to start on port $port" -ForegroundColor Red
-        Write-Host "Check the proxy window for errors or try connecting manually to mongodb://localhost:$port/?directConnection=true" -ForegroundColor Yellow
-        return
-    }
+    create_db_proxy $cluster $port
 
     # Open MongoDB Compass
     Write-Host "`nOpening MongoDB compass..."

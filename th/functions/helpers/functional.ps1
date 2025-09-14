@@ -4,11 +4,11 @@
 
 function get_th_version {
     $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $versionCacheFile = Join-Path $moduleDir ".th_version_cache"
-    
-    if (Test-Path $versionCacheFile) {
+    $versionFile = Join-Path $moduleDir ".th\version"
+
+    if (Test-Path $versionFile) {
         try {
-            $cacheContent = Get-Content $versionCacheFile -Raw
+            $cacheContent = Get-Content $versionFile -Raw
             $lines = $cacheContent -split "`n"
             foreach ($line in $lines) {
                 if ($line -match "^CURRENT_VERSION:(.+)$") {
@@ -317,4 +317,270 @@ function load {
     }
     
     return $result
+}
+
+# ========================================================================================================================
+#                                                Activity Monitoring
+# ========================================================================================================================
+
+function update_th_activity {
+    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $thDir = Join-Path $moduleDir ".th"
+    $activityFile = Join-Path $thDir "activity"
+
+    # Create .th directory if it doesn't exist
+    if (-not (Test-Path $thDir)) {
+        New-Item -ItemType Directory -Path $thDir -Force | Out-Null
+        # Make directory hidden
+        try {
+            $dir = Get-Item $thDir -Force
+            $dir.Attributes = $dir.Attributes -bor [System.IO.FileAttributes]::Hidden
+        } catch {
+            # Ignore if can't set hidden
+        }
+    }
+
+    # Read existing activity data or create new
+    $activityData = @{}
+    if (Test-Path $activityFile) {
+        try {
+            $lines = Get-Content $activityFile
+            foreach ($line in $lines) {
+                if ($line -match "^([^:]+):\s*(.+)$") {
+                    $activityData[$matches[1]] = $matches[2]
+                }
+            }
+        } catch {
+            # Ignore read errors
+        }
+    }
+
+    # Update activity data
+    $activityData["LAST_ACTIVITY"] = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+
+    # Set default timeout if not configured
+    if (-not $activityData.ContainsKey("INACTIVITY_TIMEOUT_MINUTES")) {
+        $activityData["INACTIVITY_TIMEOUT_MINUTES"] = "30"
+    }
+
+    # Write back to activity file
+    $output = @()
+    foreach ($key in $activityData.Keys) {
+        $output += "${key}: $($activityData[$key])"
+    }
+    $output | Out-File -FilePath $activityFile -Force
+
+    # Start/restart the inactivity monitor
+    start_th_inactivity_monitor
+}
+
+function start_th_inactivity_monitor {
+    # Kill any existing monitor
+    Get-Job -Name "th_inactivity_monitor" -ErrorAction SilentlyContinue | Remove-Job -Force
+
+    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $thDir = Join-Path $moduleDir ".th"
+    $activityFile = Join-Path $thDir "activity"
+
+    # Read timeout from activity file, default to 30 minutes
+    $timeoutMinutes = 30
+    if (Test-Path $activityFile) {
+        try {
+            $lines = Get-Content $activityFile
+            foreach ($line in $lines) {
+                if ($line -match "^INACTIVITY_TIMEOUT_MINUTES:\s*(.+)$") {
+                    $timeoutMinutes = [int]$matches[1].Trim()
+                    break
+                }
+            }
+        } catch {
+            # Use default if can't read
+        }
+    }
+
+    Start-Job -Name "th_inactivity_monitor" -ScriptBlock {
+        param($timeout, $modulePath)
+        $activityFile = Join-Path $modulePath ".th\activity"
+
+        while ($true) {
+            Start-Sleep 60  # Check every minute
+
+            if (Test-Path $activityFile) {
+                try {
+                    $lines = Get-Content $activityFile
+                    $lastActivityString = ""
+                    foreach ($line in $lines) {
+                        if ($line -match "^LAST_ACTIVITY:\s*(.+)$") {
+                            $lastActivityString = $matches[1].Trim()
+                            break
+                        }
+                    }
+
+                    if ($lastActivityString) {
+                        $lastActivity = Get-Date $lastActivityString
+                        $inactiveMinutes = (Get-Date) - $lastActivity | Select-Object -ExpandProperty TotalMinutes
+
+                        if ($inactiveMinutes -gt $timeout) {
+                            # Run cleanup
+                            powershell.exe -Command "Import-Module '$modulePath\th.psm1' -Force; th_kill"
+                            break
+                        }
+                    }
+                } catch {
+                    # Ignore parsing errors
+                }
+            }
+        }
+    } -ArgumentList $timeoutMinutes, $moduleDir | Out-Null
+}
+
+function stop_th_inactivity_monitor {
+    Get-Job -Name "th_inactivity_monitor" -ErrorAction SilentlyContinue | Remove-Job -Force
+}
+
+function th_config {
+    param([string[]]$Arguments = @())
+
+    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+    $thDir = Join-Path $moduleDir ".th"
+    $activityFile = Join-Path $thDir "activity"
+    $versionFile = Join-Path $thDir "version"
+
+    # Create .th directory if it doesn't exist
+    if (-not (Test-Path $thDir)) {
+        New-Item -ItemType Directory -Path $thDir -Force | Out-Null
+        # Make directory hidden
+        try {
+            $dir = Get-Item $thDir -Force
+            $dir.Attributes = $dir.Attributes -bor [System.IO.FileAttributes]::Hidden
+        } catch {
+            # Ignore if can't set hidden
+        }
+    }
+
+    # Read existing activity data
+    $activityData = @{}
+    if (Test-Path $activityFile) {
+        try {
+            $lines = Get-Content $activityFile
+            foreach ($line in $lines) {
+                if ($line -match "^([^:]+):\s*(.+)$") {
+                    $activityData[$matches[1]] = $matches[2]
+                }
+            }
+        } catch {
+            # Ignore read errors
+        }
+    }
+
+    # Read existing version data
+    $versionData = @{}
+    if (Test-Path $versionFile) {
+        try {
+            $lines = Get-Content $versionFile
+            foreach ($line in $lines) {
+                if ($line -match "^([^:]+):\s*(.+)$") {
+                    $versionData[$matches[1]] = $matches[2]
+                }
+            }
+        } catch {
+            # Ignore read errors
+        }
+    }
+
+    # If no arguments, show all current config
+    if ($Arguments.Count -eq 0) {
+        Clear-Host
+        create_header "TH Configuration"
+
+        Write-Host "Current configuration:" -ForegroundColor White
+        Write-Host ""
+
+        # Show inactivity timeout
+        $currentTimeout = if ($activityData.ContainsKey("INACTIVITY_TIMEOUT_MINUTES")) { $activityData["INACTIVITY_TIMEOUT_MINUTES"] } else { "30" }
+        Write-Host "• inactivity timeout (timeout): " -NoNewLine
+        Write-Host "$currentTimeout minutes" -ForegroundColor Green
+
+        # Show update suppression
+        $currentSuppression = if ($versionData.ContainsKey("UPDATE_SUPPRESSION_HOURS")) { $versionData["UPDATE_SUPPRESSION_HOURS"] } else { "24" }
+        Write-Host "• update suppression (suppresion): " -NoNewLine
+        Write-Host "$currentSuppression hours" -ForegroundColor Green
+
+        Write-Host ""
+        return
+    }
+
+    $option = $Arguments[0].ToLower()
+    $value = if ($Arguments.Count -gt 1) { $Arguments[1] } else { "" }
+
+    switch ($option) {
+        { $_ -in @("inactivity-timeout", "timeout") } {
+            if (-not $value) {
+                Write-Host "❌ Missing value for inactivity-timeout. Usage: th config inactivity-timeout <minutes>" -ForegroundColor Red
+                return
+            }
+
+            # Validate input
+            $timeoutValue = 0
+            if (-not [int]::TryParse($value, [ref]$timeoutValue) -or $timeoutValue -le 0) {
+                Write-Host "❌ Invalid timeout value. Please enter a positive number." -ForegroundColor Red
+                return
+            }
+
+            # Update activity data with new timeout
+            $activityData["INACTIVITY_TIMEOUT_MINUTES"] = $timeoutValue.ToString()
+
+            # Preserve last activity if it exists
+            if (-not $activityData.ContainsKey("LAST_ACTIVITY")) {
+                $activityData["LAST_ACTIVITY"] = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+            }
+
+            # Write back to activity file
+            $output = @()
+            foreach ($key in $activityData.Keys) {
+                $output += "${key}: $($activityData[$key])"
+            }
+            $output | Out-File -FilePath $activityFile -Force
+
+            Write-Host "✅ Inactivity timeout updated to " -NoNewLine
+            Write-Host "$timeoutValue minutes" -ForegroundColor Green
+
+            # Restart the inactivity monitor with new timeout
+            start_th_inactivity_monitor
+        }
+        { $_ -in @("update-suppression", "suppression") } {
+            if (-not $value) {
+                Write-Host "❌ Missing value for update-suppression. Usage: th config update-suppression <hours>" -ForegroundColor Red
+                return
+            }
+
+            # Validate input
+            $suppressionValue = 0
+            if (-not [int]::TryParse($value, [ref]$suppressionValue) -or $suppressionValue -le 0) {
+                Write-Host "❌ Invalid suppression value. Please enter a positive number." -ForegroundColor Red
+                return
+            }
+
+            # Update version data with new suppression
+            $versionData["UPDATE_SUPPRESSION_HOURS"] = $suppressionValue.ToString()
+
+            # Write back to version file
+            $output = @()
+            foreach ($key in $versionData.Keys) {
+                $output += "${key}: $($versionData[$key])"
+            }
+            $output | Out-File -FilePath $versionFile -Force
+
+            Write-Host "`n✅ Update suppression updated to " -NoNewLine
+            Write-Host "$suppressionValue hours`n" -ForegroundColor Green
+        }
+        default {
+            Write-Host "`n❌ Unknown configuration option: $option" -ForegroundColor Red
+            Write-Host ""
+            Write-Host "Available options:" -ForegroundColor White
+            Write-Host "• timeout <minutes>        - Set inactivity timeout in minutes." -ForegroundColor Gray
+            Write-Host "• update-suppression <hours> - Set update check suppression in hours." -ForegroundColor Gray
+            Write-Host ""
+        }
+    }
 }

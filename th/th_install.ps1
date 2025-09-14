@@ -276,7 +276,8 @@ function Install-Dependency {
                 Invoke-WebRequest -Uri $Dependency.Url -OutFile $msiPath
 
                 # Install MSI silently
-                Write-Host "`n$indent🔧 Running MongoDB Compass MSI installer..." -ForegroundColor Cyan
+                Write-Host "`n$indent🔧" -NoNewLine -ForegroundColor Cyan
+                Write-Host " Running MongoDB Compass MSI installer..."
                 $installArgs = "/i `"$msiPath`" /quiet /norestart"
                 $installProcess = Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -Wait -PassThru
 

@@ -57,24 +57,21 @@ function open_dbeaver {
         [string]$db_user,
         [string]$port
     )
+
+
+    Clear-Host
+    create_header "DBeaver"
     
     Write-Host "Connecting to " -NoNewline -ForegroundColor White
     Write-Host $cluster -ForegroundColor Green -NoNewline
-    Write-Host " as " -NoNewline -ForegroundColor White
-    Write-Host $db_user -ForegroundColor Green -NoNewline
-    Write-Host "...`n"
+    Write-Host "..."
+    
+    create_db_proxy $cluster "postgres" "tf_teleport_rds_read_user" $port
     Start-Sleep 1
-    
-    # Start proxy in background
-    Start-Job -ScriptBlock {
-        param($cluster, $port, $db_user)
-        & tsh proxy db $cluster --db-name="postgres" --port=$port --tunnel --db-user=$db_user 2>&1 | Out-Null
-    } -ArgumentList $cluster, $port, $db_user | Out-Null
-    
+
     Clear-Host
     create_header "DBeaver"
-    Write-Host "To connect, follow these steps: " -ForegroundColor White
-    Write-Host "`n1. Once DBeaver opens, click create a new connection in the very top left."
+    Write-Host "1. Once DBeaver opens, click create a new connection in the very top left."
     Write-Host "2. Select " -NoNewLine
     Write-Host "PostgreSQL " -NoNewLine -ForegroundColor White
     Write-Host "as the database type." 
@@ -93,10 +90,34 @@ function open_dbeaver {
     Write-Host "to save the connection.`n"
     Start-Sleep 1
     
-    try {
-        Start-Process "dbeaver"
-    } catch {
-        Write-Host "`nL Could not open DBeaver. Please ensure it is installed and accessible from PATH." -ForegroundColor Red
+    # Check if DBeaver is already running
+    $dbeaverProcess = Get-Process -Name "dbeaver" -ErrorAction SilentlyContinue
+
+    if ($dbeaverProcess) {
+        # Bring DBeaver window to front
+        Add-Type -TypeDefinition @"
+            using System;
+            using System.Runtime.InteropServices;
+            public class Win32 {
+                [DllImport("user32.dll")]
+                public static extern bool SetForegroundWindow(IntPtr hWnd);
+                [DllImport("user32.dll")]
+                public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+            }
+"@
+
+        $mainWindowHandle = $dbeaverProcess[0].MainWindowHandle
+        if ($mainWindowHandle -ne [IntPtr]::Zero) {
+            [Win32]::ShowWindow($mainWindowHandle, 9) | Out-Null  # 9 = SW_RESTORE
+            [Win32]::SetForegroundWindow($mainWindowHandle) | Out-Null
+        }
+    } else {
+        try {
+            Write-Host "Starting DBeaver..." -ForegroundColor Green
+            Start-Process "dbeaver"
+        } catch {
+            Write-Host "`n❌ Could not open DBeaver. Please ensure it is installed and accessible from PATH." -ForegroundColor Red
+        }
     }
 }
 
