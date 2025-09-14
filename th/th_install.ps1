@@ -303,23 +303,27 @@ function Install-Dependency {
                 Remove-Item -Path $tempDir -Recurse -Force
             }
             "mongodb-compass" {
+                # Try user-level MSI installation first, fall back to manual message
                 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "compass_install"
                 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
                 $msiPath = Join-Path $tempDir "mongodb-compass.msi"
                 Invoke-WebRequest -Uri $Dependency.Url -OutFile $msiPath
 
-                # Install MSI silently
+                # Try MSI installation for current user only
                 Write-Host "`n$indent🔧" -NoNewLine -ForegroundColor Cyan
-                Write-Host " Running MongoDB Compass MSI installer..."
-                $installArgs = "/i `"$msiPath`" /quiet /norestart"
+                Write-Host " Installing MongoDB Compass for current user..."
+                $installArgs = "/i `"$msiPath`""
                 $installProcess = Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -Wait -PassThru
 
                 if ($installProcess.ExitCode -eq 0) {
                     Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green
                     Write-Host " MongoDB Compass installed successfully"
                 } else {
-                    throw "MongoDB Compass MSI installer failed with exit code: $($installProcess.ExitCode)"
+                    Write-Host "`n$indent⚠️ MSI installation failed (exit code: $($installProcess.ExitCode))" -ForegroundColor Yellow
+                    Write-Host "$indent   This usually means admin rights are required." -ForegroundColor Yellow
+                    Write-Host "$indent   Please install MongoDB Compass manually from:" -ForegroundColor Yellow
+                    Write-Host "$indent   $($Dependency.Url)" -ForegroundColor Cyan
                 }
 
                 Remove-Item -Path $tempDir -Recurse -Force
@@ -331,17 +335,20 @@ function Install-Dependency {
                 $installerPath = Join-Path $tempDir "dbeaver-setup.exe"
                 Invoke-WebRequest -Uri $Dependency.Url -OutFile $installerPath
 
-                # Install EXE silently
+                # Try user-level installation first
                 Write-Host "`n$indent🔧" -NoNewLine -ForegroundColor Cyan
-                Write-Host " Running DBeaver installer..."
-                $installArgs = "/S /allusers"
+                Write-Host " Installing DBeaver for current user..."
+                $installArgs = "/S /currentuser"
                 $installProcess = Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait -PassThru
 
                 if ($installProcess.ExitCode -eq 0) {
                     Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green
                     Write-Host " DBeaver installed successfully"
                 } else {
-                    throw "DBeaver installer failed with exit code: $($installProcess.ExitCode)"
+                    Write-Host "`n$indent⚠️ Installer failed (exit code: $($installProcess.ExitCode))" -ForegroundColor Yellow
+                    Write-Host "$indent   This usually means admin rights are required." -ForegroundColor Yellow
+                    Write-Host "$indent   Please install DBeaver manually from:" -ForegroundColor Yellow
+                    Write-Host "$indent   $($Dependency.Url)" -ForegroundColor Cyan
                 }
 
                 Remove-Item -Path $tempDir -Recurse -Force
@@ -386,10 +393,10 @@ if (-not $SkipDependencies) {
     function Add-ToPath {
         param([string]$Directory)
 
-        $currentPath = [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+        $currentPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
         if ($currentPath -notlike "*$Directory*") {
             $newPath = if ($currentPath) { "$currentPath;$Directory" } else { $Directory }
-            [Environment]::SetEnvironmentVariable('PATH', $newPath, 'Machine')
+            [Environment]::SetEnvironmentVariable('PATH', $newPath, 'User')
             Write-Host "`n$indent🔗" -NoNewLine -ForegroundColor Green
             Write-Host " Added to PATH"
         }
@@ -462,7 +469,11 @@ if (-not $SkipDependencies) {
     }
 
     # Check mandatory dependency: tsh
-    if (-not (Test-Command "tsh")) {
+    $tshInstallDir = Join-Path $userProgramsPath "tsh"
+    $tshExePath = Join-Path $tshInstallDir 'tsh.exe'
+    $tshInstalled = (Test-Path $tshExePath) -or (Test-Command "tsh")
+
+    if (-not $tshInstalled) {
         Write-Host "$indent❌ tsh (Teleport CLI) is required but not installed" -ForegroundColor Red
 
         do {
@@ -482,9 +493,9 @@ if (-not $SkipDependencies) {
             Write-Host "$indent⚠️  TH will not work without tsh. Install from: https://github.com/gravitational/teleport/releases" -ForegroundColor Yellow
         }
     } else {
-        # Check if it's installed in our managed location and ensure PATH is set
-        $tshInstallDir = Join-Path $userProgramsPath "tsh"
-        if (Test-Path (Join-Path $tshInstallDir 'tsh.exe')) {
+        Write-Host "$indent✅ tsh (Teleport CLI) is already available" -ForegroundColor Green
+        # Ensure PATH is set if it's in our managed location
+        if (Test-Path $tshExePath) {
             Add-ToPath $tshInstallDir
         }
     }
