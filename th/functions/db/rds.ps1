@@ -113,7 +113,7 @@ function open_dbeaver {
         }
     } else {
         try {
-            Write-Host "Starting DBeaver..." -ForegroundColor Green
+            Write-Host "Starting DBeaver...`n"
             Start-Process "dbeaver"
         } catch {
             Write-Host "`n❌ Could not open DBeaver. Please ensure it is installed and accessible from PATH." -ForegroundColor Red

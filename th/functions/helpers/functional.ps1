@@ -207,7 +207,7 @@ function th_login {
     for ($i = 0; $i -lt 60; $i++) {
         Start-Sleep -Milliseconds 500
         if (tsh status 2>$null | Select-String -Quiet 'Logged in as:') {
-            Write-Host "`nLogged in successfully" -ForegroundColor Green
+            Write-Host "`nLogged in successfully`n" -ForegroundColor Green
             return
         }
     }
