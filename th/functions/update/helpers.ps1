@@ -21,8 +21,6 @@ function check_th_updates_background {
         }
     }
 
-    $suppressionHours = 0.01
-
     # Check if we already checked recently
     if (Test-Path $versionCacheFile) {
         $cacheTime = (Get-Item $versionCacheFile -Force).LastWriteTime
