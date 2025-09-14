@@ -173,10 +173,6 @@ if (-not (Test-Path $thConfigDir)) {
     }
 }
 
-# Create or update version file
-Write-Host "$indent📋" -ForegroundColor Cyan -NoNewLine
-Write-Host " Setting up version tracking..."
-
 # Read existing version file to preserve settings
 $existingContent = @{}
 if (Test-Path $versionFile) {
@@ -689,5 +685,4 @@ Write-Host "$indent   💾 Version: " -NoNewLine
 Write-Host "$Version" -ForegroundColor Green
 Write-Host ""
 Write-Host "$indent⚠️ Note: Restart PowerShell if 'th' command is not recognized." -ForegroundColor Yellow
-Write-Host "`n$indent📝 th also functions and is formatted better in a non-admin shell."
 Write-Host ""
