@@ -3,13 +3,8 @@
 # Fix Unicode display
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-param(
-    [string]$Version = "latest",
-    [switch]$Force,
-    [switch]$SkipDependencies
-)
-
 $ErrorActionPreference = 'Stop'
+$Version="latest"
 $moduleName = "th"
 $indent = "  "
 function create_header {
@@ -298,26 +293,20 @@ function Install-Dependency {
                 $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "dbeaver_install"
                 New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
 
-                $zipPath = Join-Path $tempDir "dbeaver.zip"
-                Invoke-WebRequest -Uri $Dependency.Url -OutFile $zipPath
+                $installerPath = Join-Path $tempDir "dbeaver-setup.exe"
+                Invoke-WebRequest -Uri $Dependency.Url -OutFile $installerPath
 
-                Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+                # Install EXE silently
+                Write-Host "`n$indent🔧" -NoNewLine -ForegroundColor Cyan
+                Write-Host " Running DBeaver installer..."
+                $installArgs = "/S /allusers"
+                $installProcess = Start-Process -FilePath $installerPath -ArgumentList $installArgs -Wait -PassThru
 
-                # Find the DBeaver application folder
-                $dbeaverFolder = Get-ChildItem -Path $tempDir -Directory | Select-Object -First 1
-                if ($dbeaverFolder -and (Test-Path (Join-Path $dbeaverFolder.FullName "dbeaver.exe"))) {
-                    # Remove existing installation if it exists
-                    if (Test-Path $Dependency.InstallPath) {
-                        Remove-Item -Path $Dependency.InstallPath -Recurse -Force
-                    }
-
-                    # Copy entire DBeaver folder to Program Files
-                    Copy-Item -Path $dbeaverFolder.FullName -Destination $Dependency.InstallPath -Recurse -Force
-
+                if ($installProcess.ExitCode -eq 0) {
                     Write-Host "`n$indent✅" -NoNewLine -ForegroundColor Green
                     Write-Host " DBeaver installed successfully"
                 } else {
-                    throw "DBeaver application folder not found in archive"
+                    throw "DBeaver installer failed with exit code: $($installProcess.ExitCode)"
                 }
 
                 Remove-Item -Path $tempDir -Recurse -Force
@@ -438,7 +427,7 @@ if (-not $SkipDependencies) {
     }
 
     # Check mandatory dependency: tsh
-    if (-not (Test-Command "th")) {
+    if (-not (Test-Command "tsh")) {
         Write-Host "$indent❌ tsh (Teleport CLI) is required but not installed" -ForegroundColor Red
 
         do {
@@ -508,7 +497,7 @@ if (-not $SkipDependencies) {
             Command = "dbeaver"
             Name = "DBeaver"
             Description = "Required for connecting to RDS databases via GUI"
-            Url = "https://dbeaver.io/files/dbeaver-ce-latest-win32.win32.x86_64.zip"
+            Url = "https://dbeaver.io/files/dbeaver-ce-latest-x86_64-setup.exe"
             AutoInstall = $true
             InstallPath = "C:\Program Files\DBeaver"
             ExecutableName = "dbeaver.exe"
@@ -661,5 +650,5 @@ Write-Host "$indent   💾 Version: " -NoNewLine
 Write-Host "$Version" -ForegroundColor Green
 Write-Host ""
 Write-Host "$indent⚠️ Note: Restart PowerShell if 'th' command is not recognized." -ForegroundColor Yellow
-Write-Host "`n$indent📝 th also functions, And is formatted, better in a non-admin shell."
+Write-Host "`n$indent📝 th also functions and is formatted better in a non-admin shell."
 Write-Host ""
