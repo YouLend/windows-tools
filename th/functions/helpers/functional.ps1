@@ -421,8 +421,8 @@ function start_th_inactivity_monitor {
                         $inactiveMinutes = (Get-Date) - $lastActivity | Select-Object -ExpandProperty TotalMinutes
 
                         if ($inactiveMinutes -gt $timeout) {
-                            # Run cleanup
-                            powershell.exe -Command "Import-Module 'th' -Force; th_kill"
+                            # Run cleanup using th command
+                            powershell.exe -Command "th cleanup"
                             break
                         }
                     }
@@ -491,7 +491,7 @@ function th_config {
     # If no arguments, show all current config
     if ($Arguments.Count -eq 0) {
         Clear-Host
-        create_header "TH Configuration"
+        create_header "th config"
 
         Write-Host "Current configuration:" -ForegroundColor White
         Write-Host ""
@@ -541,9 +541,10 @@ function th_config {
                 $output += "${key}: $($activityData[$key])"
             }
             $output | Out-File -FilePath $activityFile -Force
-
+            Clear-Host
+            create_header "th config"
             Write-Host "✅ Inactivity timeout updated to " -NoNewLine
-            Write-Host "$timeoutValue minutes" -ForegroundColor Green
+            Write-Host "$timeoutValue minutes`n" -ForegroundColor Green
 
             # Restart the inactivity monitor with new timeout
             start_th_inactivity_monitor
@@ -571,11 +572,15 @@ function th_config {
             }
             $output | Out-File -FilePath $versionFile -Force
 
-            Write-Host "`n✅ Update suppression updated to " -NoNewLine
+            Clear-Host
+            create_header "th config"
+            Write-Host "✅ Update suppression updated to " -NoNewLine
             Write-Host "$suppressionValue hour/s`n" -ForegroundColor Green
         }
         default {
-            Write-Host "`n❌ Unknown configuration option: $option" -ForegroundColor Red
+            Clear-Host
+            create_header "th config"
+            Write-Host "❌ Unknown configuration option: $option" -ForegroundColor Red
             Write-Host ""
             Write-Host "Available options:" -ForegroundColor White
             Write-Host "• inactivity timeout (timeout) <minutes>   - Set inactivity timeout in minutes." -ForegroundColor Gray
