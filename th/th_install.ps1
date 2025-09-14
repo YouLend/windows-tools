@@ -7,6 +7,12 @@ $ErrorActionPreference = 'Stop'
 $Version="latest"
 $moduleName = "th"
 $indent = "  "
+
+# Define user programs directory for all installations
+$userProgramsPath = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)) "Programs"
+if (-not (Test-Path $userProgramsPath)) {
+    New-Item -ItemType Directory -Path $userProgramsPath -Force | Out-Null
+}
 function create_header {
     param (
         [string]$HeaderText,
@@ -57,18 +63,15 @@ if ($Version -eq "latest") {
     }
 }
 
-# Choose installation location based on admin privileges
-$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+# Use user directory to avoid permission issues
+$userModulePath = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::MyDocuments)) 'WindowsPowerShell\Modules'
+$installPath = Join-Path $userModulePath $moduleName
 
-if ($isAdmin) {
-    # System-wide installation (requires admin)
-    $systemModulePath = Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules'
-    $installPath = Join-Path $systemModulePath $moduleName
-    # Create system module directory if it doesn't exist
-    if (-not (Test-Path $systemModulePath)) {
-        Write-Host "$indent📂 Creating system module directory..." -ForegroundColor Yellow
-        New-Item -ItemType Directory -Path $systemModulePath -Force | Out-Null
-    }
+# Create user module directory if it doesn't exist
+if (-not (Test-Path $userModulePath)) {
+    Write-Host "$indent📂 Creating user module directory..." -ForegroundColor Yellow
+    New-Item -ItemType Directory -Path $userModulePath -Force | Out-Null
+}
 
 # Initialize flag to track if we should skip main installation
 $skipMainInstall = $false
@@ -102,15 +105,10 @@ $skipMainInstall = $false
             Remove-Item -Path $installPath -Recurse -Force
         }
     } else {
-        Write-Host "$indent📦 Installing system-wide to: " -NoNewLine 
+        Write-Host "$indent📦 Installing to user directory: " -NoNewLine
         Write-Host "$installPath" -ForegroundColor Cyan
     }
 
-} else {
-    # User-specific installation
-    Write-Host "$indent❌ Not running shell as Admin. Re-open powershell as Administrator to install.`n" -ForegroundColor Red
-    return
-}
 
 
 # Download and extract (only if not skipping main install)
@@ -225,8 +223,8 @@ function Install-Dependency {
                 # Find the PostgreSQL installation folder in extracted files
                 $psqlFolder = Get-ChildItem -Path $tempDir -Directory -Recurse | Where-Object { $_.Name -match "pgsql|postgresql" } | Select-Object -First 1
                 if ($psqlFolder) {
-                    # Copy entire PostgreSQL folder to Program Files
-                    $targetPath = "C:\Program Files\PostgreSQL"
+                    # Copy entire PostgreSQL folder to user's local programs
+                    $targetPath = Join-Path $userProgramsPath "PostgreSQL"
                     if (Test-Path $targetPath) {
                         Remove-Item -Path $targetPath -Recurse -Force
                     }
@@ -363,7 +361,7 @@ if (-not $SkipDependencies) {
 
     # Function to download and install tsh
     function Install-Tsh {
-        $tshInstallDir = "C:\Program Files\tsh"
+        $tshInstallDir = Join-Path $userProgramsPath "tsh"
         $tshExePath = Join-Path $tshInstallDir 'tsh.exe'
 
         # Check if tsh is already installed in target directory
@@ -409,7 +407,7 @@ if (-not $SkipDependencies) {
             }
 
             $tshPath = Join-Path $tempDir $tshExe
-            $tshInstallDir = "C:\Program Files\tsh"
+            $tshInstallDir = Join-Path $userProgramsPath "tsh"
             if (-not (Test-Path $tshInstallDir)) {
                 New-Item -ItemType Directory -Path $tshInstallDir -Force | Out-Null
             }
@@ -449,7 +447,7 @@ if (-not $SkipDependencies) {
         }
     } else {
         # Check if it's installed in our managed location and ensure PATH is set
-        $tshInstallDir = "C:\Program Files\tsh"
+        $tshInstallDir = Join-Path $userProgramsPath "tsh"
         if (Test-Path (Join-Path $tshInstallDir 'tsh.exe')) {
             Add-ToPath $tshInstallDir
         }
@@ -463,7 +461,7 @@ if (-not $SkipDependencies) {
             Description = "Required for PostgreSQL database connections"
             Url = "https://sbp.enterprisedb.com/getfile.jsp?fileid=1259681&_gl=1*1usqs8e*_gcl_au*MTYxODMyMzkzOC4xNzU3Nzc3Njc3*_ga*R0ExLjEuMTMyMzY3MjE3Mi4xNzU3Nzc3Njc5*_ga_ND3EP1ME7G*czE3NTc3Nzc2NzgkbzEkZzEkdDE3NTc3ODE4NTYkajYwJGwwJGgxODY1ODEyNDEz"
             AutoInstall = $true
-            InstallPath = "C:\Program Files\PostgreSQL\bin"
+            InstallPath = (Join-Path $userProgramsPath "PostgreSQL\bin")
             ExecutableName = "psql.exe"
         },
         @{
@@ -472,7 +470,7 @@ if (-not $SkipDependencies) {
             Description = "Required for kubernetes connections (th k) to function correctly."
             Url = "https://dl.k8s.io/release/v1.34.0/bin/windows/amd64/kubectl.exe"
             AutoInstall = $true
-            InstallPath = "C:\Program Files\kubectl"
+            InstallPath = (Join-Path $userProgramsPath "kubectl")
             ExecutableName = "kubectl.exe"
         },
         @{
@@ -481,7 +479,7 @@ if (-not $SkipDependencies) {
             Description = "Required for mongodb connections to function correctly"
             Url = "https://downloads.mongodb.com/compass/mongosh-2.5.8-win32-x64.zip"
             AutoInstall = $true
-            InstallPath = "C:\Program Files\mongosh"
+            InstallPath = (Join-Path $userProgramsPath "mongosh")
             ExecutableName = "mongosh.exe"
         },
         @{
@@ -490,7 +488,7 @@ if (-not $SkipDependencies) {
             Description = "Required for connecting to MongoDB databases via GUI"
             Url = "https://downloads.mongodb.com/compass/mongodb-compass-1.46.10-win32-x64.msi"
             AutoInstall = $true
-            InstallPath = "C:\Program Files\MongoDB\MongoDB Compass"
+            InstallPath = (Join-Path $userProgramsPath "MongoDB\MongoDB Compass")
             ExecutableName = "MongoDBCompass.exe"
             IsGUI = $true
         },
@@ -500,7 +498,7 @@ if (-not $SkipDependencies) {
             Description = "Required for connecting to RDS databases via GUI"
             Url = "https://dbeaver.io/files/dbeaver-ce-latest-x86_64-setup.exe"
             AutoInstall = $true
-            InstallPath = "C:\Program Files\DBeaver"
+            InstallPath = (Join-Path $userProgramsPath "DBeaver")
             ExecutableName = "dbeaver.exe"
             IsGUI = $true
         }
