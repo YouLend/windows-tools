@@ -3,8 +3,8 @@
 # ========================================================================================================================
 
 function get_th_version {
-    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $versionFile = Join-Path $moduleDir ".th\version"
+    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    $versionFile = Join-Path $userProfile ".th\version"
 
     if (Test-Path $versionFile) {
         try {
@@ -324,8 +324,8 @@ function load {
 # ========================================================================================================================
 
 function update_th_activity {
-    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $thDir = Join-Path $moduleDir ".th"
+    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    $thDir = Join-Path $userProfile ".th"
     $activityFile = Join-Path $thDir "activity"
 
     # Create .th directory if it doesn't exist
@@ -378,8 +378,8 @@ function start_th_inactivity_monitor {
     # Kill any existing monitor
     Get-Job -Name "th_inactivity_monitor" -ErrorAction SilentlyContinue | Remove-Job -Force
 
-    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $thDir = Join-Path $moduleDir ".th"
+    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    $thDir = Join-Path $userProfile ".th"
     $activityFile = Join-Path $thDir "activity"
 
     # Read timeout from activity file, default to 30 minutes
@@ -399,8 +399,8 @@ function start_th_inactivity_monitor {
     }
 
     Start-Job -Name "th_inactivity_monitor" -ScriptBlock {
-        param($timeout, $modulePath)
-        $activityFile = Join-Path $modulePath ".th\activity"
+        param($timeout, $userProfile)
+        $activityFile = Join-Path $userProfile ".th\activity"
 
         while ($true) {
             Start-Sleep 60  # Check every minute
@@ -422,7 +422,7 @@ function start_th_inactivity_monitor {
 
                         if ($inactiveMinutes -gt $timeout) {
                             # Run cleanup
-                            powershell.exe -Command "Import-Module '$modulePath\th.psm1' -Force; th_kill"
+                            powershell.exe -Command "Import-Module 'th' -Force; th_kill"
                             break
                         }
                     }
@@ -431,7 +431,7 @@ function start_th_inactivity_monitor {
                 }
             }
         }
-    } -ArgumentList $timeoutMinutes, $moduleDir | Out-Null
+    } -ArgumentList $timeoutMinutes, $userProfile | Out-Null
 }
 
 function stop_th_inactivity_monitor {
@@ -441,8 +441,8 @@ function stop_th_inactivity_monitor {
 function th_config {
     param([string[]]$Arguments = @())
 
-    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $thDir = Join-Path $moduleDir ".th"
+    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    $thDir = Join-Path $userProfile ".th"
     $activityFile = Join-Path $thDir "activity"
     $versionFile = Join-Path $thDir "version"
 

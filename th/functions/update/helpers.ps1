@@ -1,8 +1,8 @@
 ﻿# Background update checker
 function check_th_updates_background {
-    # Use th module directory for cache
-    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $versionCacheFile = Join-Path $moduleDir ".th\version"
+    # Use user profile directory for cache
+    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    $versionCacheFile = Join-Path $userProfile ".th\version"
     $sessionCacheFile = Join-Path ([System.IO.Path]::GetTempPath()) ("th_update_check_session_" + [System.Guid]::NewGuid().ToString("N").Substring(0, 8))
     
     # Read update suppression config from version file
@@ -227,8 +227,8 @@ function show_update_notification {
 function update_current_version {
     param([string]$NewVersion)
 
-    $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-    $versionCacheFile = Join-Path $moduleDir ".th\version"
+    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+    $versionCacheFile = Join-Path $userProfile ".th\version"
 
     # Create .th directory if it doesn't exist
     $thDir = Split-Path -Parent $versionCacheFile

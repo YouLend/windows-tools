@@ -289,8 +289,8 @@
         [Console]::SetCursorPosition(0, $currentPos.Y - $linesToClear)
         
         # Mute notifications by updating version file timestamp
-        $moduleDir = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
-        $versionFile = Join-Path $moduleDir ".th\version"
+        $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+        $versionFile = Join-Path $userProfile ".th\version"
 
         # Read current suppression hours
         $suppressionHours = 1
