@@ -143,14 +143,6 @@ try {
     Write-Host " Installing module files..."
     Copy-Item -Path $repoPath -Destination $installPath -Recurse -Force
 
-    # Create version cache
-    $versionCacheFile = Join-Path $installPath ".th_version_cache"
-    $versionCacheContent = @"
-CURRENT_VERSION: $Version
-LAST_CHECK: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))
-INSTALL_METHOD: curl
-"@
-    Set-Content -Path $versionCacheFile -Value $versionCacheContent -Force
 
 } catch {
     Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -161,6 +153,54 @@ INSTALL_METHOD: curl
         Remove-Item -Path $tempDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+
+# Always ensure version file exists in user profile, even if installation was skipped
+$userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
+$thConfigDir = Join-Path $userProfile ".th"
+$versionFile = Join-Path $thConfigDir "version"
+
+# Create .th directory if it doesn't exist
+if (-not (Test-Path $thConfigDir)) {
+    Write-Host "`n$indent📁" -ForegroundColor Cyan -NoNewLine
+    Write-Host " Creating configuration directory..."
+    New-Item -ItemType Directory -Path $thConfigDir -Force | Out-Null
+    # Make directory hidden
+    try {
+        $dir = Get-Item $thConfigDir -Force
+        $dir.Attributes = $dir.Attributes -bor [System.IO.FileAttributes]::Hidden
+    } catch {
+        # Ignore if can't set hidden attribute
+    }
+}
+
+# Create or update version file
+Write-Host "$indent📋" -ForegroundColor Cyan -NoNewLine
+Write-Host " Setting up version tracking..."
+
+# Read existing version file to preserve settings
+$existingContent = @{}
+if (Test-Path $versionFile) {
+    try {
+        $lines = Get-Content $versionFile
+        foreach ($line in $lines) {
+            if ($line -match "^([^:]+):\s*(.+)$") {
+                $existingContent[$matches[1]] = $matches[2]
+            }
+        }
+    } catch {
+        # Ignore read errors
+    }
+}
+
+# Create version content
+$versionContent = @"
+CURRENT_VERSION:$Version
+LATEST_VERSION:$Version
+LAST_CHECK:$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+STATUS:UP_TO_DATE
+"@
+
+Set-Content -Path $versionFile -Value $versionContent -Force
 
 # Create batch wrapper for global access
 Write-Host "`n$indent🔧" -ForegroundColor Cyan -NoNewLine
