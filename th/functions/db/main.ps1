@@ -1,4 +1,4 @@
-function db_login {
+﻿function db_login {
     param(
         [string[]]$Arguments
     )
@@ -37,6 +37,7 @@ function db_login {
                 
                 $result = load -Job { check_rds_login } -Message "Checking rds access..."
                 $db_lines = $result.db_lines
+                $full_names = $result.full_names
                 $login_status = $result.login_status
 
                 for ($i = 0; $i -lt $db_lines.Count; $i++) {
@@ -68,7 +69,7 @@ function db_login {
                 $selected_index = [int]$db_choice - 1
                 
                 if ([int]$db_choice -gt 0 -and [int]$db_choice -le $db_lines.Count) {
-                    $selected_db = $db_lines[$selected_index]
+                    $selected_db = $full_names[$selected_index]
                     
                     # Check if the selected database has failed login status
                     $selected_status = if ($selected_index -lt $login_status.Count) { $login_status[$selected_index] } else { "n/a" }
@@ -94,7 +95,7 @@ function db_login {
 
                 $parsed_json = $json_output | ConvertFrom-Json
 
-                $filtered_dbs = $parsed_json | Where-Object { $_.metadata.labels.db_type -ne "rds" }
+                $filtered_dbs = $parsed_json | Where-Object { $_.metadata.labels.project }
 
                 # Display databases with color coding based on access
                 for ($i = 0; $i -lt $filtered_dbs.Count; $i++) {

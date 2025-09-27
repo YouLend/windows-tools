@@ -1,57 +1,4 @@
-﻿function rds_connect {
-    param(
-        [string]$cluster,
-        [string]$port
-    )
-    
-    $db_user = "tf_teleport_rds_read_user"
-
-    Clear-Host
-    create_header "Connect"
-    Write-Host "How would you like to connect?`n"
-    Write-Host "1. Via PSQL" -ForegroundColor White
-    Write-Host "2. Via DBeaver" -ForegroundColor White
-    Write-Host "`nSelect option (number): " -NoNewline
-    $option = Read-Host
-
-    if ([string]::IsNullOrEmpty($option)) {
-        Write-Host "No selection made. Exiting."
-        return
-    }
-
-    switch ($option) {
-        "1" {
-            Write-Host "`nConnecting via PSQL..." -ForegroundColor Green
-
-            if (-not (check_psql)) {
-                return
-            }
-
-            $database = list_postgres_databases $cluster
-            
-            if (-not $database) {
-                return
-            }
-
-            check_admin
-
-            connect_psql $cluster $database $db_user
-        }
-        "2" {
-            Write-Host "`nConnecting via DBeaver..." -ForegroundColor Green
-            
-            check_admin
-
-            open_dbeaver $cluster $db_user $port
-        }
-        default {
-            Write-Host "Invalid selection. Exiting."
-            return
-        }
-    }
-}
-
-function open_dbeaver {
+﻿function open_dbeaver {
     param(
         [string]$cluster,
         [string]$db_user,
@@ -66,7 +13,7 @@ function open_dbeaver {
     Write-Host $cluster -ForegroundColor Green -NoNewline
     Write-Host "..."
     
-    create_db_proxy $cluster "postgres" "tf_teleport_rds_read_user" $port
+    create_db_proxy $cluster  $port "tf_teleport_rds_read_user" "postgres" 
     Start-Sleep 1
 
     Clear-Host
@@ -119,20 +66,4 @@ function open_dbeaver {
             Write-Host "`n❌ Could not open DBeaver. Please ensure it is installed and accessible from PATH." -ForegroundColor Red
         }
     }
-}
-
-function connect_psql {
-    param(
-        [string]$cluster,
-        [string]$database,
-        [string]$db_user
-    )
-    
-    for ($i = 3; $i -ge 1; $i--) {
-        Write-Host ". " -NoNewline -ForegroundColor Green
-        Start-Sleep 1
-    }
-    Write-Host ""
-    Clear-Host
-    & tsh db connect $cluster --db-user=$db_user --db-name=$database
 }

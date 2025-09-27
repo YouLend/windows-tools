@@ -1,4 +1,4 @@
-function terraform_login {
+﻿function terraform_login {
     th_login     
     Clear-Host
     create_header "Terragrunt Login"

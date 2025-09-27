@@ -1,4 +1,4 @@
-function kube_login {
+﻿function kube_login {
     param(
         [string]$env_arg
     )
@@ -16,6 +16,7 @@ function kube_login {
     
     $result = load -Job { check_cluster_access } -Message "Checking cluster access..."
     $cluster_lines = $result.cluster_lines
+    $full_names = $result.full_names
     $login_status = $result.login_status
 
     for ($i = 0; $i -lt $cluster_lines.Count; $i++) {
@@ -49,7 +50,7 @@ function kube_login {
         return
     }
 
-    $selected_cluster = $cluster_lines[$selected_index]
+    $selected_cluster = $full_names[$selected_index]
     $selected_cluster_status = if ($selected_index -lt $login_status.Count) { $login_status[$selected_index] } else { "n/a" }
 
     if ($selected_cluster_status -eq "fail") {
@@ -58,7 +59,7 @@ function kube_login {
 
     Clear-Host
     create_header "Kube Login"
-    Write-Host "`nLogging you into: " -NoNewline -ForegroundColor White
+    Write-Host "Logging you into: " -NoNewline -ForegroundColor White
     Write-Host $selected_cluster -ForegroundColor Green
     & tsh kube login $selected_cluster > $null 2>&1
     Write-Host "`nLogged in successfully!" -ForegroundColor White

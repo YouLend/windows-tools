@@ -100,7 +100,7 @@
         Clear-Host
         create_header "DB Quick Login"
         if ($cluster_type -eq "rds") {
-            open_dbeaver $cluster "tf_teleport_rds_read_user" $port
+            open_dbeaver $cluster $port "tf_teleport_rds_read_user" 
         } elseif ($cluster_type -eq "mongo") {
             open_atlas $cluster $port
         }

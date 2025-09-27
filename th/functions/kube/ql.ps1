@@ -1,4 +1,4 @@
-function kube_quick_login {
+﻿function kube_quick_login {
     param(
         [string]$ql_arg
     )

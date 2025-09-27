@@ -1,4 +1,4 @@
-function aws_login {
+﻿function aws_login {
     param(
         [string[]]$Arguments
     )
@@ -25,10 +25,21 @@ function aws_login {
     
     # Display enumerated names
     $accounts = @()
+    $full_names = @()
     $index = 1
     foreach ($app in $filtered) {
-        Write-Host "$index. $($app.metadata.name)"
-        $accounts += $app.metadata.name
+        $full_name = $app.metadata.name
+        # Remove yl- prefix except for mlflow accounts
+        $display_name = if ($full_name -match "mlflow") {
+            $full_name
+        } elseif ($full_name -match "^yl-(.+)") {
+            $matches[1]
+        } else {
+            $full_name
+        }
+        Write-Host "$index. $display_name"
+        $accounts += $display_name
+        $full_names += $full_name
         $index++
     }
     
@@ -45,7 +56,7 @@ function aws_login {
         $appChoice = Read-Host
     }
     
-    $selectedApp = $accounts[[int]$appChoice - 1]
+    $selectedApp = $full_names[[int]$appChoice - 1]
     
     Write-Host ""
     Write-Host "Selected app: " -NoNewline
