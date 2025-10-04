@@ -35,7 +35,7 @@
     create_header -HeaderText "Extras" -CenterSpaces $centerSpaces
     Write-Host "$centerSpaces     Run the following commands to access the extra features:"
     Write-Host "$centerSpaces     ╚═ th loader              : Run loader animation." -ForegroundColor White
-    Write-Host "$centerSpaces     ╚═ th animate [options]    : Run logo animation." -ForegroundColor White
+    Write-Host "$centerSpaces     ╚═ th animate [options]   : Run logo animation." -ForegroundColor White
     Write-Host "$centerSpaces        ╚═ yl" -ForegroundColor White
     Write-Host "$centerSpaces        ╚═ th" -ForegroundColor White
 

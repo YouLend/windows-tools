@@ -1,6 +1,5 @@
 ﻿function get_th_version {
-    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-    $versionFile = Join-Path $userProfile ".th\version"
+    $versionFile = Join-Path $HOME ".th\version"
 
     if (Test-Path $versionFile) {
         try {

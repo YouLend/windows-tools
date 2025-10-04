@@ -8,10 +8,11 @@ $Version="latest"
 $moduleName = "th"
 $indent = "  "
 
-# Define user programs directory for all installations
-$userProgramsPath = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)) "Programs"
-if (-not (Test-Path $userProgramsPath)) {
-    New-Item -ItemType Directory -Path $userProgramsPath -Force | Out-Null
+# Define installation directories
+# All installations go to $HOME
+$programsPath = Join-Path $HOME "Programs"
+if (-not (Test-Path $programsPath)) {
+    New-Item -ItemType Directory -Path $programsPath -Force | Out-Null
 }
 function create_header {
     param (
@@ -36,7 +37,7 @@ function create_header {
     # Top border
     Write-Host ""
     Write-Host "$indent" -NoNewline
-    Write-Host "    ▄███████▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀████████▀" -ForegroundColor DarkGray
+    Write-Host "    ▄███████▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀███████████▀" -ForegroundColor DarkGray
     Write-Host "$indent" -NoNewline
     Write-Host "  $leftDashStr " -NoNewLine
     Write-Host "$HeaderText" -NoNewLine -ForegroundColor White
@@ -63,51 +64,58 @@ if ($Version -eq "latest") {
     }
 }
 
-# Use user directory to avoid permission issues
-$userModulePath = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::MyDocuments)) 'WindowsPowerShell\Modules'
-$installPath = Join-Path $userModulePath $moduleName
-
-# Create user module directory if it doesn't exist
-if (-not (Test-Path $userModulePath)) {
-    Write-Host "$indent📂 Creating user module directory..." -ForegroundColor Yellow
-    New-Item -ItemType Directory -Path $userModulePath -Force | Out-Null
-}
+# Install th to $HOME
+$installPath = Join-Path $HOME $moduleName
 
 # Initialize flag to track if we should skip main installation
 $skipMainInstall = $false
 
-# Check for existing installation
-    if (Test-Path $installPath) {
-        if (-not $Force) {
-            Write-Host "$indent⚠️ TH is already installed at: " -NoNewLine
-            Write-Host "$installPath`n" -ForegroundColor Yellow
+# Check for existing installation by testing if th command works
+$thExists = $false
+try {
+    $null = Get-Command th -ErrorAction Stop
+    $thExists = $true
+} catch {
+    $thExists = $false
+}
 
-            do {
-                Write-Host "${indent}Overwrite existing installation? (y/N): " -NoNewLine
-                $response = Read-Host
+if ($thExists) {
+    if (-not $Force) {
+        Write-Host "$indent⚠️ TH is already installed" -ForegroundColor Yellow
+        if (Test-Path $installPath) {
+            Write-Host "$indent   Location: $installPath`n" -ForegroundColor Gray
+        }
 
-                if ($response -notin @("y", "Y", "n", "N", "")) {
-                    Write-Host "$indent❌ Invalid choice. Please enter y for Yes or n/Enter for No." -ForegroundColor Red
-                }
-            } while ($response -notin @("y", "Y", "n", "N", ""))
+        do {
+            Write-Host "${indent}Overwrite existing installation? (y/N): " -NoNewLine
+            $response = Read-Host
 
-            if ($response -ne 'y' -and $response -ne 'Y') {
-                Write-Host "$indent⚠️  Skipping TH installation - proceeding to dependency check..." -ForegroundColor Yellow
-                # Set a flag to skip the main installation but continue to dependencies
-                $skipMainInstall = $true
-            } else {
-                Write-Host "`n$indent🗑️ Removing existing installation..."
+            if ($response -notin @("y", "Y", "n", "N", "")) {
+                Write-Host "$indent❌ Invalid choice. Please enter y for Yes or n/Enter for No." -ForegroundColor Red
+            }
+        } while ($response -notin @("y", "Y", "n", "N", ""))
+
+        if ($response -ne 'y' -and $response -ne 'Y') {
+            Write-Host "$indent⚠️  Skipping TH installation - proceeding to dependency check..." -ForegroundColor Yellow
+            # Set a flag to skip the main installation but continue to dependencies
+            $skipMainInstall = $true
+        } else {
+            Write-Host "`n$indent🗑️ Removing existing installation..."
+            if (Test-Path $installPath) {
                 Remove-Item -Path $installPath -Recurse -Force
             }
-        } else {
-            # Force flag is set, remove without asking
-            Write-Host "`n$indent🗑️ Removing existing installation..."
-            Remove-Item -Path $installPath -Recurse -Force
         }
     } else {
-        Write-Host "$indent📦 Installing to user directory: " -NoNewLine
-        Write-Host "$installPath" -ForegroundColor Cyan
+        # Force flag is set, remove without asking
+        Write-Host "`n$indent🗑️ Removing existing installation..."
+        if (Test-Path $installPath) {
+            Remove-Item -Path $installPath -Recurse -Force
+        }
     }
+} else {
+    Write-Host "$indent📦 Installing to home directory: " -NoNewLine
+    Write-Host "$installPath" -ForegroundColor Cyan
+}
 
 
 
@@ -141,7 +149,14 @@ try {
     # Install module files
     Write-Host "`n$indent📋" -NoNewLine -ForegroundColor Cyan
     Write-Host " Installing module files..."
-    Copy-Item -Path $repoPath -Destination $installPath -Recurse -Force
+
+    # Create install directory if it doesn't exist
+    if (-not (Test-Path $installPath)) {
+        New-Item -ItemType Directory -Path $installPath -Force | Out-Null
+    }
+
+    # Copy contents of th folder to install path (not the folder itself), excluding th_install.ps1
+    Get-ChildItem -Path $repoPath | Where-Object { $_.Name -ne 'th_install.ps1' } | Copy-Item -Destination $installPath -Recurse -Force
 
 
 } catch {
@@ -155,8 +170,7 @@ try {
 }
 
 # Always ensure version file exists in user profile, even if installation was skipped
-$userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-$thConfigDir = Join-Path $userProfile ".th"
+$thConfigDir = Join-Path $HOME ".th"
 $versionFile = Join-Path $thConfigDir "version"
 
 # Create .th directory if it doesn't exist
@@ -201,7 +215,7 @@ Set-Content -Path $versionFile -Value $versionContent -Force
 # Create batch wrapper for global access
 Write-Host "`n$indent🔧" -ForegroundColor Cyan -NoNewLine
 Write-Host " Setting up global command..."
-$binPath = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'th\bin'
+$binPath = Join-Path $installPath 'bin'
 if (-not (Test-Path $binPath)) {
     New-Item -ItemType Directory -Path $binPath -Force | Out-Null
 }
@@ -214,13 +228,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Import-Module '$inst
 
 Set-Content -Path $batchFile -Value $batchContent -Force
 
-# Add to PATH if not already there
+# Add bin to PATH if not already there
 $currentPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
 if ($currentPath -notlike "*$binPath*") {
     $newPath = if ($currentPath) { "$currentPath;$binPath" } else { $binPath }
     [Environment]::SetEnvironmentVariable('PATH', $newPath, 'User')
     Write-Host "`n$indent🔗" -NoNewLine -ForegroundColor Green
-    Write-Host "Added to PATH"
+    Write-Host " Added to PATH"
 }
 }
 
@@ -259,8 +273,8 @@ function Install-Dependency {
                 # Find the PostgreSQL installation folder in extracted files
                 $psqlFolder = Get-ChildItem -Path $tempDir -Directory -Recurse | Where-Object { $_.Name -match "pgsql|postgresql" } | Select-Object -First 1
                 if ($psqlFolder) {
-                    # Copy entire PostgreSQL folder to user's local programs
-                    $targetPath = Join-Path $userProgramsPath "PostgreSQL"
+                    # Copy entire PostgreSQL folder to Programs
+                    $targetPath = Join-Path $programsPath "PostgreSQL"
                     if (Test-Path $targetPath) {
                         Remove-Item -Path $targetPath -Recurse -Force
                     }
@@ -403,7 +417,7 @@ if (-not $SkipDependencies) {
 
     # Function to download and install tsh
     function Install-Tsh {
-        $tshInstallDir = Join-Path $userProgramsPath "tsh"
+        $tshInstallDir = Join-Path $programsPath "tsh"
         $tshExePath = Join-Path $tshInstallDir 'tsh.exe'
 
         # Check if tsh is already installed in target directory
@@ -449,7 +463,7 @@ if (-not $SkipDependencies) {
             }
 
             $tshPath = Join-Path $tempDir $tshExe
-            $tshInstallDir = Join-Path $userProgramsPath "tsh"
+            $tshInstallDir = Join-Path $programsPath "tsh"
             if (-not (Test-Path $tshInstallDir)) {
                 New-Item -ItemType Directory -Path $tshInstallDir -Force | Out-Null
             }
@@ -468,7 +482,7 @@ if (-not $SkipDependencies) {
     }
 
     # Check mandatory dependency: tsh
-    $tshInstallDir = Join-Path $userProgramsPath "tsh"
+    $tshInstallDir = Join-Path $programsPath "tsh"
     $tshExePath = Join-Path $tshInstallDir 'tsh.exe'
     $tshInstalled = (Test-Path $tshExePath) -or (Test-Command "tsh")
 
@@ -507,7 +521,7 @@ if (-not $SkipDependencies) {
             Description = "Required for PostgreSQL database connections"
             Url = "https://sbp.enterprisedb.com/getfile.jsp?fileid=1259681&_gl=1*1usqs8e*_gcl_au*MTYxODMyMzkzOC4xNzU3Nzc3Njc3*_ga*R0ExLjEuMTMyMzY3MjE3Mi4xNzU3Nzc3Njc5*_ga_ND3EP1ME7G*czE3NTc3Nzc2NzgkbzEkZzEkdDE3NTc3ODE4NTYkajYwJGwwJGgxODY1ODEyNDEz"
             AutoInstall = $true
-            InstallPath = (Join-Path $userProgramsPath "PostgreSQL\bin")
+            InstallPath = (Join-Path $programsPath "PostgreSQL\bin")
             ExecutableName = "psql.exe"
         },
         @{
@@ -516,7 +530,7 @@ if (-not $SkipDependencies) {
             Description = "Required for kubernetes connections (th k) to function correctly."
             Url = "https://dl.k8s.io/release/v1.34.0/bin/windows/amd64/kubectl.exe"
             AutoInstall = $true
-            InstallPath = (Join-Path $userProgramsPath "kubectl")
+            InstallPath = (Join-Path $programsPath "kubectl")
             ExecutableName = "kubectl.exe"
         },
         @{
@@ -525,7 +539,7 @@ if (-not $SkipDependencies) {
             Description = "Required for mongodb connections to function correctly"
             Url = "https://downloads.mongodb.com/compass/mongosh-2.5.8-win32-x64.zip"
             AutoInstall = $true
-            InstallPath = (Join-Path $userProgramsPath "mongosh")
+            InstallPath = (Join-Path $programsPath "mongosh")
             ExecutableName = "mongosh.exe"
         },
         @{
@@ -534,7 +548,7 @@ if (-not $SkipDependencies) {
             Description = "Required for connecting to MongoDB databases via GUI"
             Url = "https://downloads.mongodb.com/compass/mongodb-compass-1.46.10-win32-x64.msi"
             AutoInstall = $true
-            InstallPath = (Join-Path $userProgramsPath "MongoDB\MongoDB Compass")
+            InstallPath = (Join-Path $programsPath "MongoDB\MongoDB Compass")
             ExecutableName = "MongoDBCompass.exe"
             IsGUI = $true
         },
@@ -544,7 +558,7 @@ if (-not $SkipDependencies) {
             Description = "Required for connecting to RDS databases via GUI"
             Url = "https://dbeaver.io/files/dbeaver-ce-latest-x86_64-setup.exe"
             AutoInstall = $true
-            InstallPath = (Join-Path $userProgramsPath "DBeaver")
+            InstallPath = (Join-Path $programsPath "DBeaver")
             ExecutableName = "dbeaver.exe"
             IsGUI = $true
         }

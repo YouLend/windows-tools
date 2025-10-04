@@ -11,10 +11,9 @@ function th {
 	# Update activity tracking for inactivity monitor
 	update_th_activity
 
-	# Check th updates 
-	$updateCacheFile = ""
-	$updateCacheFile = check_th_updates_background
-
+	# Check th updates
+	check_th_updates_background
+	
 	$Command = $args[0]
     if ($args.Count -gt 1) {
 		$SubArgs = @($args[1..($args.Count - 1)])
@@ -28,9 +27,7 @@ function th {
 				print_kube_help
 			} else {
 				kube_login @SubArgs
-				if ($updateCacheFile) {
-					show_update_notification $updateCacheFile
-				}
+				show_update_notification
 			}
 		}
 		{ $_ -in @("terra", "t") } {
@@ -38,19 +35,15 @@ function th {
 				Write-Output "Logs into yl-admin as sudo-admin"
 			} else {
 				terraform_login @SubArgs
-				if ($updateCacheFile) {
-					show_update_notification $updateCacheFile
-				}
+				show_update_notification
 			}
 		}
 		{ $_ -in @("aws", "a") } {
 			if ($SubArgs[0] -eq "-h") {
 				print_aws_help
 			} else {
-				aws_login -Arguments $SubArgs			
-				if ($updateCacheFile) {
-					show_update_notification $updateCacheFile
-				}
+				aws_login -Arguments $SubArgs
+				show_update_notification
 			}
 		}
 		{ $_ -in @("database", "d") } {
@@ -58,9 +51,7 @@ function th {
 				print_db_help
 			} else {
 				db_login -Arguments $SubArgs
-				if ($updateCacheFile) {
-					show_update_notification $updateCacheFile
-				}
+				show_update_notification
 			}
 		}
 		{ $_ -in @("cleanup", "c") } {

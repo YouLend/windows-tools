@@ -1,6 +1,5 @@
 ﻿function update_th_activity {
-    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-    $thDir = Join-Path $userProfile ".th"
+    $thDir = Join-Path $HOME ".th"
     $activityFile = Join-Path $thDir "activity"
 
     # Create .th directory if it doesn't exist

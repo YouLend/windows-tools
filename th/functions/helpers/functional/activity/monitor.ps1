@@ -2,8 +2,7 @@
     # Kill any existing monitor
     Get-Job -Name "th_inactivity_monitor" -ErrorAction SilentlyContinue | Remove-Job -Force
 
-    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-    $thDir = Join-Path $userProfile ".th"
+    $thDir = Join-Path $HOME ".th"
     $activityFile = Join-Path $thDir "activity"
 
     # Read timeout from activity file, default to 30 minutes
@@ -23,8 +22,8 @@
     }
 
     Start-Job -Name "th_inactivity_monitor" -ScriptBlock {
-        param($timeout, $userProfile)
-        $activityFile = Join-Path $userProfile ".th\activity"
+        param($timeout, $thDir)
+        $activityFile = Join-Path $thDir "activity"
 
         while ($true) {
             Start-Sleep 60  # Check every minute
@@ -55,7 +54,7 @@
                 }
             }
         }
-    } -ArgumentList $timeoutMinutes, $userProfile | Out-Null
+    } -ArgumentList $timeoutMinutes, $thDir | Out-Null
 }
 
 function stop_th_inactivity_monitor {

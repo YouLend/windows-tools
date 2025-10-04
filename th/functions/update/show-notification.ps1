@@ -1,44 +1,45 @@
 ﻿# Check for update results and display notification (non-blocking)
 function show_update_notification {
-    param([string]$UpdateCacheFile)
-    
-    # Quick check - don't wait or block
+    # Read directly from .th/version file
+    $versionFile = Join-Path $HOME ".th\version"
+
     $result = $null
-    
-    # Only check if cache file exists, don't wait
-    if (Test-Path $UpdateCacheFile) {
+
+    # Read from version file
+    if (Test-Path $versionFile) {
         try {
-            $result = Get-Content $UpdateCacheFile -Raw -ErrorAction SilentlyContinue
+            $result = Get-Content $versionFile -Raw -ErrorAction SilentlyContinue
         } catch {
             # Ignore file read errors
         }
     }
-    
+
     # Clean up any completed jobs immediately
     Get-Job | Where-Object { $_.State -eq 'Completed' } | Remove-Job -Force -ErrorAction SilentlyContinue
-    
+
     if ($result) {
         $result = $result.Trim()
-        
-        # Check if notifications are muted
-        if ($result -eq "MUTED") {
-            return  # Skip notification silently
-        } elseif ($result -like "UPDATE_AVAILABLE:*") {
-            $parts = $result -split ":"
-            if ($parts.Length -ge 3) {
-                $currentVersion = $parts[1].Trim()
-                $latestVersion = $parts[2].Trim()
 
+        # Parse version file data
+        $lines = $result -split "`n"
+        $versionData = @{}
+        foreach ($line in $lines) {
+            if ($line -match "^([^:]+):\s*(.+)$") {
+                $versionData[$matches[1]] = $matches[2].Trim()
+            }
+        }
+
+        # Check if we should show update notification
+        if ($versionData.ContainsKey("STATUS") -and $versionData["STATUS"] -eq "SHOW_UPDATE") {
+            $currentVersion = $versionData["CURRENT_VERSION"]
+            $latestVersion = $versionData["LATEST_VERSION"]
+
+            if ($currentVersion -and $latestVersion) {
                 # Get changelog from GitHub API
                 $changelog = get_changelog $latestVersion
 
                 create_notification $currentVersion $latestVersion $changelog
             }
         }
-    }
-    
-    # Clean up cache file
-    if (Test-Path $UpdateCacheFile) {
-        Remove-Item $UpdateCacheFile -Force -ErrorAction SilentlyContinue
     }
 }

@@ -1,34 +1,7 @@
-﻿# ========================================================================================================================
-#                                                    Functional Helpers
-# ========================================================================================================================
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ========================================================================================================================
-#                                                Activity Monitoring
-# ========================================================================================================================
-
-
-
-
-function th_config {
+﻿function th_config {
     param([string[]]$Arguments = @())
 
-    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-    $thDir = Join-Path $userProfile ".th"
+    $thDir = Join-Path $HOME ".th"
     $activityFile = Join-Path $thDir "activity"
     $versionFile = Join-Path $thDir "version"
 
@@ -135,7 +108,7 @@ function th_config {
             # Restart the inactivity monitor with new timeout
             start_th_inactivity_monitor
         }
-        { $_ -in @("update-suppression", "suppression") } {
+        { $_ -in @("update-suppression", "update") } {
             if (-not $value) {
                 Write-Host "❌ Missing value for update-suppression. Usage: th config update-suppression <hours>" -ForegroundColor Red
                 return
@@ -170,7 +143,7 @@ function th_config {
             Write-Host ""
             Write-Host "Available options:" -ForegroundColor White
             Write-Host "• inactivity timeout (timeout) <minutes>   - Set inactivity timeout in minutes." -ForegroundColor Gray
-            Write-Host "• update suppression (suppression) <hours> - Set update check suppression in hours." -ForegroundColor Gray
+            Write-Host "• update suppression (update) <hours> - Set update check suppression in hours." -ForegroundColor Gray
             Write-Host ""
         }
     }

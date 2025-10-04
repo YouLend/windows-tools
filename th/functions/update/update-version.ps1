@@ -2,8 +2,7 @@
 function update_current_version {
     param([string]$NewVersion)
 
-    $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-    $versionCacheFile = Join-Path $userProfile ".th\version"
+    $versionCacheFile = Join-Path $HOME ".th\version"
 
     # Create .th directory if it doesn't exist
     $thDir = Split-Path -Parent $versionCacheFile

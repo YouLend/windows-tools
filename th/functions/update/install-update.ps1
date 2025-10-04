@@ -10,25 +10,12 @@ function install_th_update {
     Write-Host "...`n"
 
     try {
-        # Detect current installation location
-        $moduleDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+        # Target installation directory is always $HOME\th
+        $targetDir = Join-Path $HOME "th"
 
-        # Check if we're in Program Files (old system-wide install) or user directory
-        $programFilesPath = Join-Path $env:ProgramFiles 'WindowsPowerShell\Modules\th'
-        $userModulesPath = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::MyDocuments)) 'WindowsPowerShell\Modules\th'
-
-        # Determine target installation directory
-        $targetDir = $moduleDir
-        if ($moduleDir -eq $programFilesPath) {
-            # Migrate from Program Files to user directory to avoid permission issues
-            Write-Host ($Indent + "Migrating from Program Files to user directory...`n") -ForegroundColor Yellow
-            $targetDir = $userModulesPath
-
-            # Create user modules directory if it doesn't exist
-            $userModulesBase = Split-Path -Parent $userModulesPath
-            if (-not (Test-Path $userModulesBase)) {
-                New-Item -ItemType Directory -Path $userModulesBase -Force | Out-Null
-            }
+        # Create th directory if it doesn't exist
+        if (-not (Test-Path $targetDir)) {
+            New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
         }
         $tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "th_update_$([System.Guid]::NewGuid().ToString('N').Substring(0,8))"
         New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
@@ -44,8 +31,7 @@ function install_th_update {
         Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
         
         # Backup version cache from user profile
-        $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-        $versionCacheFile = Join-Path $userProfile ".th\version"
+        $versionCacheFile = Join-Path $HOME ".th\version"
         $versionCacheBackup = $null
         if (Test-Path $versionCacheFile) {
             $versionCacheBackup = Get-Content $versionCacheFile -Raw
@@ -58,17 +44,8 @@ function install_th_update {
         } else {
             New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
         }
-        Copy-Item -Path "$tempDir\windows-tools-th-v$Version\th\*" -Destination $targetDir -Recurse -Force
-
-        # If we migrated from Program Files, try to clean up the old location (best effort)
-        if ($moduleDir -eq $programFilesPath -and $targetDir -ne $moduleDir) {
-            Write-Host ($Indent + "Cleaning up old Program Files installation...`n") -ForegroundColor Gray
-            try {
-                Remove-Item -Path $moduleDir -Recurse -Force -ErrorAction SilentlyContinue
-            } catch {
-                # Ignore cleanup errors - user can manually remove later if needed
-            }
-        }
+        # Copy contents excluding th_install.ps1
+        Get-ChildItem -Path "$tempDir\windows-tools-th-v$Version\th" | Where-Object { $_.Name -ne 'th_install.ps1' } | Copy-Item -Destination $targetDir -Recurse -Force
         
         # Update version cache
         update_current_version $Version

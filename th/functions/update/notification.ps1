@@ -288,12 +288,10 @@
         # Position cursor back to where menu started
         [Console]::SetCursorPosition(0, $currentPos.Y - $linesToClear)
         
-        # Mute notifications by updating version file timestamp
-        $userProfile = [Environment]::GetFolderPath([Environment+SpecialFolder]::UserProfile)
-        $versionFile = Join-Path $userProfile ".th\version"
+        # Mute notifications by updating status to UPDATE_MUTED
+        $versionFile = Join-Path $HOME ".th\version"
 
-        # Read current suppression hours
-        $suppressionHours = 1
+        # Read current version data
         $versionData = @{}
         if (Test-Path $versionFile) {
             try {
@@ -303,25 +301,27 @@
                         $versionData[$matches[1]] = $matches[2]
                     }
                 }
-                if ($versionData.ContainsKey("UPDATE_SUPPRESSION_HOURS")) {
-                    $suppressionHours = [int]$versionData["UPDATE_SUPPRESSION_HOURS"]
-                }
             } catch {
-                # Use default
+                # Ignore read errors
             }
         }
 
-        # Update the file timestamp to suppress notifications
-        if (Test-Path $versionFile) {
-            try {
-                $file = Get-Item $versionFile -Force
-                $file.LastWriteTime = (Get-Date)
-            } catch {
-                # Ignore timestamp update errors
-            }
-        }
+        # Update status to UPDATE_MUTED
+        $versionData["STATUS"] = "UPDATE_MUTED"
+        $versionData["LAST_CHECK"] = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
 
-        Write-Host ($indent + "Update notifications muted for $suppressionHours hour/s.") -ForegroundColor White
+        # Get suppression hours from version data
+        $suppressionHours = if ($versionData.ContainsKey("UPDATE_SUPPRESSION_HOURS")) { [int]$versionData["UPDATE_SUPPRESSION_HOURS"] } else { 1 }
+
+        # Write back to file
+        $output = @()
+        foreach ($key in $versionData.Keys) {
+            $output += "${key}:$($versionData[$key])"
+        }
+        $output -join "`n" | Set-Content -Path $versionFile -Force
+
+        $hourText = if ($suppressionHours -eq 1) { "hour" } else { "hours" }
+        Write-Host ($indent + "Update notifications muted for $suppressionHours $hourText.") -ForegroundColor White
         Start-Sleep -Seconds 2
         
         # Restore the saved terminal output with colors
