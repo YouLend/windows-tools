@@ -75,12 +75,10 @@ UPDATE_SUPPRESSION_HOURS:1
     }
     
     # Start background process
-    Write-Host "Starting background job"
     $job = Start-Job -ScriptBlock {
         param($versionCache)
 
         try {
-            Write-Host "Background job started, versionCache: $versionCache"
             # Use GitHub API to check for updates
             $repo = "YouLend/windows-tools"
             $apiUrl = "https://api.github.com/repos/$repo/releases/latest"
@@ -129,8 +127,7 @@ UPDATE_SUPPRESSION_HOURS:1
                 try {
                     $response = Invoke-RestMethod -Uri $apiUrl -ErrorAction Stop
                     $latestVersion = $response.tag_name -replace '^(th-)?v?', ''  # Remove 'th-v' or 'v' prefix if present
-                    Write-Host "here"
-                    Write-Host $latestVersion
+
                     # Compare versions
                     if ($moduleVersion -ne $latestVersion) {
                         $result = "SHOW_UPDATE"  # Show notification to user

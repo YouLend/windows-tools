@@ -46,7 +46,27 @@ function install_th_update {
         }
         # Copy contents excluding th_install.ps1
         Get-ChildItem -Path "$tempDir\windows-tools-th-v$Version\th" | Where-Object { $_.Name -ne 'th_install.ps1' } | Copy-Item -Destination $targetDir -Recurse -Force
-        
+
+        # Create batch wrapper for global access (same as installer)
+        $binPath = Join-Path $targetDir 'bin'
+        if (-not (Test-Path $binPath)) {
+            New-Item -ItemType Directory -Path $binPath -Force | Out-Null
+        }
+
+        $batchFile = Join-Path $binPath 'th.bat'
+        $batchContent = @"
+@echo off
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Import-Module '$targetDir' -Force; th %*"
+"@
+        Set-Content -Path $batchFile -Value $batchContent -Force
+
+        # Ensure bin is in PATH
+        $currentPath = [Environment]::GetEnvironmentVariable('PATH', 'User')
+        if ($currentPath -notlike "*$binPath*") {
+            $newPath = if ($currentPath) { "$currentPath;$binPath" } else { $binPath }
+            [Environment]::SetEnvironmentVariable('PATH', $newPath, 'User')
+        }
+
         # Update version cache
         update_current_version $Version
         
