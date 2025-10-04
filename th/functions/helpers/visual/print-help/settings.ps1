@@ -10,11 +10,11 @@
     Write-Host " ╚═ " -NoNewline
     Write-Host "th config <key> <value>" -NoNewline -ForegroundColor White
     Write-Host " : Set a given configuration value."
-    Write-Host "`nAvailable [options]:" -ForegroundColor White
-    Write-Host "• timeout <minutes> " -NoNewLine -ForegroundColor White
-    Write-Host "- Set inactivity timeout in minutes" -ForegroundColor Gray
+    Write-Host "`nAvailable [options]:"
+    Write-Host "• timeout <minutes/off> " -NoNewLine -ForegroundColor White
+    Write-Host "    : Set inactivity timeout in minutes."
     Write-Host "• update <hours> " -NoNewLine -ForegroundColor White
-    Write-Host "   - Set update notification suppression in hours" -ForegroundColor Gray
+    Write-Host "           : Set update notification suppression in hours" -ForegroundColor Gray
     Write-Host "`nExamples:"
     Write-Host " ╚═ " -NoNewline
     ccode "th config timeout 120"

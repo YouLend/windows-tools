@@ -12,7 +12,12 @@
             $lines = Get-Content $activityFile
             foreach ($line in $lines) {
                 if ($line -match "^INACTIVITY_TIMEOUT_MINUTES:\s*(.+)$") {
-                    $timeoutMinutes = [int]$matches[1].Trim()
+                    $timeoutValue = $matches[1].Trim()
+                    # If set to OFF, don't start the monitor
+                    if ($timeoutValue -eq "OFF") {
+                        return
+                    }
+                    $timeoutMinutes = [int]$timeoutValue
                     break
                 }
             }
