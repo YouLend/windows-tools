@@ -12,10 +12,7 @@
         if ($arg -match "b") {
             $open_browser = $true
         }
-        # Check for super sudo first, then regular sudo
-        if ($arg -eq "ss" -or $arg -eq "ssb") {
-            $sudo_flag = "ss"  # Super sudo
-        } elseif ($arg -match "s") {
+        if ($arg -match "s") {
             $sudo_flag = "s"   # Regular sudo
         }
     }
@@ -28,42 +25,20 @@
         return
     }
     
-    $role_value = load_config "aws" $env_arg "role"
+    # Check if running on Platform, otherwise use teleport-dev role
+    $tshStatus = & tsh status 2>&1 | Out-String
+    if ($tshStatus -match "Platform") {
+        $role_value = load_config "aws" $env_arg "role"
+    } else {
+        $role_value = "teleport-dev"
+    }
     
-    if (-not $role_value) {
-        $role_value = $env_arg
-    }
-
-    # Check for elevated privilege requirements
-    if ($sudo_flag -eq "ss") {
-        # Super sudo requires checking available roles
-        $loginOutput = & tsh apps login $account_name 2>&1 | Out-String
-        if (-not ($loginOutput -match "super_sudo_$role_value")) {
-            Write-Host "`nError: You don't have access to super_sudo roles.`n" -ForegroundColor Red
-            return
-        }
-    } elseif ($sudo_flag -eq "s") {
-        # Regular sudo check
-        $loginOutput = & tsh apps login $account_name 2>&1 | Out-String
-        if (-not ($loginOutput -match "sudo_$role_value")) {
-            aws_elevated_login $account_name $role_value
-            if ($global:reauth_aws -eq $false) {
-                return
-            }
-        }
-    }
 
     Clear-Host
     create_header "AWS Login"
     
-    if ($sudo_flag -eq "ss") {
-        $role_name = "super_sudo_$role_value"
-        Write-Host "Logging you into: " -NoNewline
-        Write-Host $account_name -ForegroundColor Green -NoNewline
-        Write-Host " as " -NoNewline
-        Write-Host $role_name -ForegroundColor Green
-    } elseif ($sudo_flag -eq "s") {
-        $role_name = "sudo_$role_value"
+    if ($sudo_flag -eq "s") {
+        $role_name = "sudo-$role_value"
         Write-Host "Logging you into: " -NoNewline
         Write-Host $account_name -ForegroundColor Green -NoNewline
         Write-Host " as " -NoNewline
@@ -76,6 +51,8 @@
         Write-Host $role_name -ForegroundColor Green
     }
 
+    return 
+    
     & tsh apps logout > $null 2>&1
     & tsh apps login $account_name --aws-role $role_name > $null 2>&1
 
